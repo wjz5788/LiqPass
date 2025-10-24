@@ -1,16 +1,32 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+/**
+ * 检查是否安装了MetaMask钱包
+ */
+const isMetaMaskInstalled = (): boolean => {
+  return typeof window !== 'undefined' && typeof window.ethereum !== 'undefined';
+};
+
+/**
+ * 钱包上下文接口 - 定义钱包连接状态和操作方法
+ */
 interface WalletContextType {
-  isConnected: boolean;
-  account: string | null;
-  isConnecting: boolean;
-  error: string | null;
-  connectWallet: () => Promise<void>;
-  disconnectWallet: () => void;
+  isConnected: boolean; // 钱包是否已连接
+  account: string | null; // 当前连接的钱包地址
+  isConnecting: boolean; // 是否正在连接中
+  error: string | null; // 错误信息
+  connectWallet: () => Promise<void>; // 连接钱包方法
+  disconnectWallet: () => void; // 断开钱包连接方法
 }
 
+/**
+ * 创建钱包上下文
+ */
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
+/**
+ * 使用钱包的Hook
+ */
 export const useWallet = () => {
   const context = useContext(WalletContext);
   if (!context) {
@@ -23,36 +39,60 @@ interface WalletProviderProps {
   children: ReactNode;
 }
 
+/**
+ * 钱包提供者组件 - 管理钱包连接状态
+ */
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [account, setAccount] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false); // 连接状态
+  const [account, setAccount] = useState<string | null>(null); // 钱包地址状态
+  const [isConnecting, setIsConnecting] = useState(false); // 连接中状态
+  const [error, setError] = useState<string | null>(null); // 错误状态
 
-  // 检查是否已安装MetaMask
-  const isMetaMaskInstalled = () => {
-    return typeof window.ethereum !== 'undefined' && window.ethereum.isMetaMask;
-  };
-
-  // 检查初始连接状态
+  /**
+   * 检查是否已安装MetaMask并初始化连接状态
+   */
   useEffect(() => {
-    const checkConnection = async () => {
-      if (isMetaMaskInstalled()) {
-        try {
-          const accounts = await window.ethereum.request({ 
-            method: 'eth_accounts' 
-          });
+    if (typeof window.ethereum !== 'undefined') {
+      // 检查是否已连接
+      window.ethereum.request({ method: 'eth_accounts' })
+        .then((accounts: string[]) => {
           if (accounts.length > 0) {
             setAccount(accounts[0]);
             setIsConnected(true);
           }
-        } catch (err) {
-          console.error('检查钱包连接失败:', err);
+        })
+        .catch((err: Error) => {
+          console.error('Failed to get accounts:', err);
+        });
+      
+      // 监听账户变化
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts.length === 0) {
+          // 用户断开连接
+          setAccount(null);
+          setIsConnected(false);
+        } else {
+          setAccount(accounts[0]);
+          setIsConnected(true);
         }
-      }
-    };
-
-    checkConnection();
+      };
+      
+      // 监听网络变化
+      const handleChainChanged = () => {
+        // 重新加载页面以应用新的网络
+        window.location.reload();
+      };
+      
+      // 注册事件监听器
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      window.ethereum.on('chainChanged', handleChainChanged);
+      
+      // 清理函数：移除事件监听器
+      return () => {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      };
+    }
   }, []);
 
   // 连接钱包

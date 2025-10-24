@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LiqPass Test Flow · 测试流程页面</title>
+    <meta
+      name="description"
+      content="LiqPass测试流程页面 - 用于开发和调试完整流程的独立测试环境"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/public/styles/main.css" />
+    <style>
+      /* 测试页面专用样式 */
+      .test-flow-header {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        border-bottom: 1px solid #475569;
+      }
+      .test-flow-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #f8fafc;
+      }
+      .test-flow-subtitle {
+        font-size: 0.875rem;
+        color: #94a3b8;
+        margin-top: 0.25rem;
+      }
+      .test-flow-debug {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-top: 2rem;
+      }
+      .test-flow-debug h3 {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #64748b;
+        margin-bottom: 0.5rem;
+      }
+      .test-flow-debug pre {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body data-page="test-flow">
+    <header class="test-flow-header">
+      <div class="nav">
+        <div class="brand">
+          <span class="test-flow-title">LiqPass · 测试流程</span>
+          <span class="test-flow-subtitle">开发调试环境 · 完整流程测试</span>
+        </div>
+        <div class="nav-controls">
+          <nav class="nav-links" aria-label="Primary navigation" data-nav-links></nav>
+          <div class="language-toggle" aria-label="Language toggle">
+            <span class="lang-block" data-lang="zh">语言：</span>
+            <span class="lang-block" data-lang="en">Language:</span>
+            <button type="button" data-lang-option data-lang="zh">中</button>
+            <span>/</span>
+            <button type="button" data-lang-option data-lang="en">EN</button>
+          </div>
+          <div data-wallet-slot></div>
+        </div>
+      </div>
+    </header>
+    
+    <main class="main-single-column test-flow-layout">
+      <section class="card test-flow-intro">
+        <div class="lang-block" data-lang="zh">
+          <h1>测试流程页面</h1>
+          <p>
+            这是一个专门用于测试LiqPass完整流程的独立页面。通过逐步测试，可以验证系统的各个组件是否正常工作。
+          </p>
+          <ul>
+            <li><strong>步骤1：基本信息配置</strong> - 设置测试钱包、交易所、交易对和订单号</li>
+            <li><strong>步骤2：API配置测试</strong> - 验证交易所API密钥配置</li>
+            <li><strong>步骤3：订单验证测试</strong> - 模拟订单验证流程</li>
+            <li><strong>步骤4：结果分析</strong> - 查看测试结果和调试信息</li>
+          </ul>
+          <p class="text-sm text-slate-400 mt-4">
+            💡 <strong>提示：</strong> 此页面主要用于开发和调试，所有操作均为模拟测试，不会产生实际交易。
+          </p>
+        </div>
+        <div class="lang-block" data-lang="en">
+          <h1>Test Flow Page</h1>
+          <p>
+            This is a dedicated page for testing the complete LiqPass workflow. Step-by-step testing helps verify that all system components are functioning correctly.
+          </p>
+          <ul>
+            <li><strong>Step 1: Basic Information</strong> - Configure test wallet, exchange, trading pair, and order ID</li>
+            <li><strong>Step 2: API Configuration</strong> - Validate exchange API key setup</li>
+            <li><strong>Step 3: Order Verification</strong> - Simulate order verification process</li>
+            <li><strong>Step 4: Result Analysis</strong> - Review test results and debug information</li>
+          </ul>
+          <p class="text-sm text-slate-400 mt-4">
+            💡 <strong>Tip:</strong> This page is primarily for development and debugging. All operations are simulated tests and will not generate actual transactions.
+          </p>
+        </div>
+      </section>
+
+      <!-- React应用将在此处渲染 -->
+      <div id="test-flow-root"></div>
+
+      <!-- 调试信息区域 -->
+      <section class="test-flow-debug">
+        <h3>调试信息</h3>
+        <div class="lang-block" data-lang="zh">
+          <p>此区域显示测试过程中的详细调试信息，便于开发人员排查问题。</p>
+        </div>
+        <div class="lang-block" data-lang="en">
+          <p>This area displays detailed debugging information during testing, helping developers troubleshoot issues.</p>
+        </div>
+        <div id="debug-info">
+          <p class="text-slate-500">测试开始后，调试信息将显示在此处...</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bg-slate-900 border-t border-slate-800 py-4">
+      <div class="container mx-auto px-4 text-center text-slate-400 text-sm">
+        © 2024 LiqPass. All rights reserved. | 测试环境 v1.0.0
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+    
+    <script>
+      // 测试页面专用脚本
+      document.addEventListener('DOMContentLoaded', function() {
+        console.log('LiqPass测试流程页面已加载');
+        
+        // 更新页面标题
+        const updatePageTitle = () => {
+          const isChinese = document.querySelector('[data-lang="zh"]').style.display !== 'none';
+          document.title = isChinese ? 'LiqPass测试流程 · 开发调试' : 'LiqPass Test Flow · Development';
+        };
+        
+        // 监听语言切换
+        const langButtons = document.querySelectorAll('[data-lang-option]');
+        langButtons.forEach(button => {
+          button.addEventListener('click', function() {
+            setTimeout(updatePageTitle, 100);
+          });
+        });
+        
+        updatePageTitle();
+      });
+    </script>
+  </body>
+</html>

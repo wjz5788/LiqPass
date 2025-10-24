@@ -25,6 +25,7 @@ const PORT = Number.parseInt(process.env.JP_PORT ?? process.env.PORT ?? '8787', 
 const VERIFY_MODE = process.env.VERIFY_MODE ?? 'real';  // 验证模式（real或stub）
 const OKX_BASE_URL = process.env.OKX_BASE_URL ?? 'https://www.okx.com';  // OKX交易所API基础URL
 const BINANCE_BASE_URL = process.env.BINANCE_BASE_URL ?? 'https://api.binance.com';  // Binance交易所API基础URL
+const GOOGLE_MCP_BASE_URL = process.env.GOOGLE_MCP_BASE_URL ?? 'https://generativelanguage.googleapis.com';  // Google MCP API基础URL
 
 const app = express();  // 创建Express应用实例
 
@@ -49,6 +50,8 @@ app.get('/healthz', (req, res) => {
     verifyMode: VERIFY_MODE,  // 当前验证模式
     okxBaseUrl: OKX_BASE_URL,  // OKX API地址
     binanceBaseUrl: BINANCE_BASE_URL,  // Binance API地址
+    googleMCPBaseUrl: GOOGLE_MCP_BASE_URL,  // Google MCP API地址
+    googleMCPConfigured: !!process.env.GOOGLE_MCP_API_KEY,  // Google MCP是否已配置
     timestamp: new Date().toISOString(),  // 当前时间戳
   });
 });
@@ -84,32 +87,69 @@ app.post('/verify/order', async (req, res) => {
 
   try {
     // 在真实模式下，调用API进行验证
-    const isValid = await verifyOrder(exchange, pair, orderRef);
-    if (isValid) {
-      // 如果订单有效，返回成功
-      res.json({
-        status: 'ok',
-        exchange,
-        pair,
-        orderRef,
-        wallet,
-        diagnostics: {
-          message: 'Order successfully verified',
-          verifyMode: VERIFY_MODE,
-          verifiedAt: new Date().toISOString(),
-        },
-      });
+    const verificationResult = await verifyOrder(exchange, pair, orderRef);
+    
+    // 处理Google MCP的特殊响应格式
+    if (exchange.toLowerCase() === 'google-mcp' && typeof verificationResult === 'object') {
+      if (verificationResult.valid) {
+        // 如果订单有效，返回成功
+        res.json({
+          status: 'ok',
+          exchange,
+          pair,
+          orderRef,
+          wallet,
+          confidence: verificationResult.confidence,
+          riskLevel: verificationResult.riskLevel,
+          details: verificationResult.details,
+          diagnostics: {
+            message: 'Order successfully verified via Google MCP',
+            verifyMode: VERIFY_MODE,
+            verifiedAt: new Date().toISOString(),
+          },
+        });
+      } else {
+        // 如果订单无效，返回失败
+        res.status(404).json({
+          status: 'fail',
+          reason: verificationResult.details || 'Order not found or invalid',
+          confidence: verificationResult.confidence,
+          riskLevel: verificationResult.riskLevel,
+          diagnostics: {
+            message: 'Order verification failed via Google MCP',
+            verifyMode: VERIFY_MODE,
+            failedAt: new Date().toISOString(),
+          },
+        });
+      }
     } else {
-      // 如果订单无效，返回失败
-      res.status(404).json({
-        status: 'fail',
-        reason: 'Order not found or invalid',
-        diagnostics: {
-          message: 'Order verification failed',
-          verifyMode: VERIFY_MODE,
-          failedAt: new Date().toISOString(),
-        },
-      });
+      // 处理传统交易所的布尔响应
+      if (verificationResult) {
+        // 如果订单有效，返回成功
+        res.json({
+          status: 'ok',
+          exchange,
+          pair,
+          orderRef,
+          wallet,
+          diagnostics: {
+            message: 'Order successfully verified',
+            verifyMode: VERIFY_MODE,
+            verifiedAt: new Date().toISOString(),
+          },
+        });
+      } else {
+        // 如果订单无效，返回失败
+        res.status(404).json({
+          status: 'fail',
+          reason: 'Order not found or invalid',
+          diagnostics: {
+            message: 'Order verification failed',
+            verifyMode: VERIFY_MODE,
+            failedAt: new Date().toISOString(),
+          },
+        });
+      }
     }
   } catch (error) {
     // 处理验证过程中发生的内部错误

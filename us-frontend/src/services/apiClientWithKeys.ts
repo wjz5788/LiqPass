@@ -1,56 +1,51 @@
 import { apiRequest, JP_API_BASE, US_API_BASE, ApiRequestOptions } from './apiClient';
 import { useApiKeys } from '../contexts/ApiKeyContext';
 
-// 扩展ApiRequestOptions以支持API密钥
+/**
+ * Extended API request options interface - supports API key configuration
+ */
 export interface ApiRequestWithKeysOptions extends ApiRequestOptions {
-  includeApiKeys?: boolean;
-  exchange?: 'binance' | 'okx';
+  includeApiKeys?: boolean; // Whether to include API keys
+  exchange?: 'binance' | 'okx'; // Exchange type
 }
 
-// 创建一个新的API请求函数，支持API密钥
+/**
+ * API request function with API key support
+ * @param path - API path
+ * @param options - Request options (including API key configuration)
+ * @returns API response data
+ */
 export async function apiRequestWithKeys<T = unknown>(
   path: string,
   options: ApiRequestWithKeysOptions = {}
 ): Promise<T> {
   const { includeApiKeys = false, exchange, ...restOptions } = options;
   
-  // 如果需要包含API密钥，则添加到请求头中
+  // Add API keys to headers if needed
   if (includeApiKeys && exchange) {
-    // 注意：在实际实现中，我们需要从上下文中获取API密钥
-    // 但由于这是一个工具函数，我们无法直接访问React上下文
-    // 在实际使用中，应该在调用此函数的组件中获取API密钥并传递进来
+    // Use the headers passed by the caller, which already contain API key information
+    const headers = restOptions.headers || {};
     
-    // 这里我们只是展示如何构造请求头
-    const headersWithKeys = {
-      ...restOptions.headers,
-    };
-    
-    // 根据交易所添加相应的API密钥头
-    switch (exchange) {
-      case 'binance':
-        // Binance API密钥应该在请求头中添加
-        // X-MBX-APIKEY: ${apiKey}
-        break;
-      case 'okx':
-        // OKX API密钥应该在请求头中添加
-        // OK-ACCESS-KEY: ${apiKey}
-        // OK-ACCESS-SIGN: ${signature}
-        // OK-ACCESS-TIMESTAMP: ${timestamp}
-        // OK-ACCESS-PASSPHRASE: ${passphrase}
-        break;
-    }
+    // No need for additional API key processing here, as the verification service 
+    // has already added API keys to the request headers
+    // We just need to ensure these header information is correctly passed to the backend API
     
     return apiRequest<T>(path, {
       ...restOptions,
-      headers: headersWithKeys,
+      headers,
     });
   }
   
-  // 如果不需要API密钥，直接使用原始apiRequest函数
+  // If API keys are not needed, use the original apiRequest function
   return apiRequest<T>(path, restOptions);
 }
 
-// 为JP API创建专门的请求函数
+/**
+ * 日本验证API专用请求函数
+ * @param path - API路径
+ * @param options - 请求选项
+ * @returns API响应数据
+ */
 export async function jpApiRequestWithKeys<T = unknown>(
   path: string,
   options: ApiRequestWithKeysOptions = {}

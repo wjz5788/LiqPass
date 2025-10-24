@@ -4,30 +4,45 @@ import type { ExchangeId, TradingPairId } from '../config/verification';
 import { TRADING_PAIR_OPTIONS } from '../config/verification';
 import { useWallet } from '../contexts/WalletContext';
 
+/**
+ * 订单验证页面组件 - 新用户第一次验证流程
+ * 功能：处理用户订单验证，包括钱包连接、交易所选择、API密钥验证、订单验证等步骤
+ */
 export function OrderVerificationPage() {
+  // 使用钱包上下文获取当前连接的钱包地址
   const { wallet } = useWallet();
-  const [orderId, setOrderId] = useState('');
-  const [exchange, setExchange] = useState<ExchangeId>('Binance');
-  const [pair, setPair] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [verificationResult, setVerificationResult] = useState<any>(null);
-  const [error, setError] = useState('');
+  
+  // 状态管理：订单号、交易所、交易对、加载状态、验证结果、错误信息
+  const [orderId, setOrderId] = useState(''); // 用户输入的订单号
+  const [exchange, setExchange] = useState<ExchangeId>('Binance'); // 选择的交易所（默认Binance）
+  const [pair, setPair] = useState(''); // 选择的交易对
+  const [isLoading, setIsLoading] = useState(false); // 验证过程中的加载状态
+  const [verificationResult, setVerificationResult] = useState<any>(null); // 验证结果
+  const [error, setError] = useState(''); // 错误信息
+  
+  // API密钥状态管理
   const [apiKeys, setApiKeys] = useState({
-    binanceApiKey: '',
-    binanceSecretKey: '',
-    okxApiKey: '',
-    okxSecretKey: '',
-    okxPassphrase: ''
+    binanceApiKey: '', // Binance API密钥
+    binanceSecretKey: '', // Binance Secret密钥
+    okxApiKey: '', // OKX API密钥
+    okxSecretKey: '', // OKX Secret密钥
+    okxPassphrase: '' // OKX Passphrase
   });
 
+  // 支持的交易所列表
   const exchanges: ExchangeId[] = ['Binance', 'OKX'];
   
-  // 加载保存的API密钥
+  /**
+   * 加载保存的API密钥
+   * 当钱包地址变化时，从localStorage加载对应的API密钥
+   */
   useEffect(() => {
     if (wallet) {
+      // 根据钱包地址从localStorage获取保存的API密钥
       const savedKeys = localStorage.getItem(`apiKeys_${wallet}`);
       if (savedKeys) {
         try {
+          // 解析保存的API密钥并设置到状态中
           const parsedKeys = JSON.parse(savedKeys);
           setApiKeys({
             binanceApiKey: parsedKeys.binanceApiKey || '',
@@ -43,13 +58,37 @@ export function OrderVerificationPage() {
     }
   }, [wallet]);
   
-  // 根据选择的交易所过滤可用的交易对
+  /**
+   * 根据选择的交易所过滤可用的交易对
+   * @returns 当前交易所支持的交易对列表
+   */
   const getAvailablePairs = () => {
     return TRADING_PAIR_OPTIONS.filter(pair => pair.exchangeId === exchange);
   };
 
+  /**
+   * 处理订单验证表单提交
+   * @param e - React表单事件
+   */
   const handleVerifyOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // 阻止表单默认提交行为
+    
+    // 前置条件检查：必须1 - 链接钱包
+    if (!wallet) {
+      setError('请先链接钱包');
+      return;
+    }
+    
+    // 前置条件检查：必须2 - API密钥验证
+    if (exchange === 'Binance' && !apiKeys.binanceApiKey) {
+      setError('请先设置Binance API密钥');
+      return;
+    }
+    if (exchange === 'OKX' && !apiKeys.okxApiKey) {
+      setError('请先设置OKX API密钥');
+      return;
+    }
+    
     setIsLoading(true);
     setError('');
     setVerificationResult(null);
@@ -77,8 +116,34 @@ export function OrderVerificationPage() {
 
       const result = await submitVerification(request, apiKeyParams);
       setVerificationResult(result);
+      
+      // 验证通过后，保存验证状态到localStorage
+      if (result.status === 'ok') {
+        localStorage.setItem(`verification_${wallet}_${orderId}`, JSON.stringify({
+          verified: true,
+          timestamp: Date.now(),
+          exchange,
+          pair,
+          orderId
+        }));
+      }
     } catch (err: any) {
-      setError(err.message || '验证失败，请检查订单信息');
+      console.error('验证失败:', err);
+      
+      // 提供更详细的错误信息
+      if (err.status === 401) {
+        setError('API密钥验证失败，请检查API密钥是否正确设置');
+      } else if (err.status === 403) {
+        setError('API密钥权限不足，请检查API密钥的权限设置');
+      } else if (err.status === 404) {
+        setError('订单不存在，请检查订单号是否正确');
+      } else if (err.status >= 500) {
+        setError('服务器内部错误，请稍后重试');
+      } else if (err.message.includes('NetworkError')) {
+        setError('网络连接失败，请检查网络连接');
+      } else {
+        setError(err.message || '验证失败，请检查订单信息');
+      }
     } finally {
       setIsLoading(false);
     }
