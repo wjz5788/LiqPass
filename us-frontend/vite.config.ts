@@ -1,7 +1,17 @@
+/**
+ * Vite配置文件 - 前端构建工具配置
+ * @file vite.config.ts
+ * @author LiqPass Team
+ * @description 配置前端开发服务器、构建选项、代理设置等
+ */
+
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+/**
+ * Vite配置定义
+ */
 export default defineConfig({
   plugins: [react()],
   resolve: {

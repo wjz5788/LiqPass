@@ -2,17 +2,46 @@ import React, { useState, useEffect } from 'react';
 import { submitVerification } from '../services/verify';
 import type { ExchangeId, TradingPairId } from '../config/verification';
 import { TRADING_PAIR_OPTIONS } from '../config/verification';
+import { useWallet } from '../contexts/WalletContext';
 
 export function OrderVerificationPage() {
+  const { wallet } = useWallet();
   const [orderId, setOrderId] = useState('');
   const [exchange, setExchange] = useState<ExchangeId>('Binance');
   const [pair, setPair] = useState('');
-  const [wallet, setWallet] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [verificationResult, setVerificationResult] = useState<any>(null);
   const [error, setError] = useState('');
+  const [apiKeys, setApiKeys] = useState({
+    binanceApiKey: '',
+    binanceSecretKey: '',
+    okxApiKey: '',
+    okxSecretKey: '',
+    okxPassphrase: ''
+  });
 
   const exchanges: ExchangeId[] = ['Binance', 'OKX'];
+  
+  // 加载保存的API密钥
+  useEffect(() => {
+    if (wallet) {
+      const savedKeys = localStorage.getItem(`apiKeys_${wallet}`);
+      if (savedKeys) {
+        try {
+          const parsedKeys = JSON.parse(savedKeys);
+          setApiKeys({
+            binanceApiKey: parsedKeys.binanceApiKey || '',
+            binanceSecretKey: parsedKeys.binanceSecretKey || '',
+            okxApiKey: parsedKeys.okxApiKey || '',
+            okxSecretKey: parsedKeys.okxSecretKey || '',
+            okxPassphrase: parsedKeys.okxPassphrase || ''
+          });
+        } catch (e) {
+          console.error('Failed to parse saved API keys', e);
+        }
+      }
+    }
+  }, [wallet]);
   
   // 根据选择的交易所过滤可用的交易对
   const getAvailablePairs = () => {
@@ -37,7 +66,16 @@ export function OrderVerificationPage() {
         leverage: 10,
       };
 
-      const result = await submitVerification(request);
+      // 准备API密钥参数
+      const apiKeyParams = {
+        binanceApiKey: apiKeys.binanceApiKey,
+        binanceSecretKey: apiKeys.binanceSecretKey,
+        okxApiKey: apiKeys.okxApiKey,
+        okxSecretKey: apiKeys.okxSecretKey,
+        okxPassphrase: apiKeys.okxPassphrase
+      };
+
+      const result = await submitVerification(request, apiKeyParams);
       setVerificationResult(result);
     } catch (err: any) {
       setError(err.message || '验证失败，请检查订单信息');
@@ -49,6 +87,27 @@ export function OrderVerificationPage() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <h1 className="text-3xl font-bold text-white mb-8">订单验证</h1>
+      
+      {/* API密钥状态提示 */}
+      <div className="bg-slate-800 rounded-lg p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">API密钥状态</h3>
+            <p className="text-slate-300 text-sm">
+              {exchange === 'Binance' 
+                ? (apiKeys.binanceApiKey ? '✅ Binance API密钥已设置' : '❌ Binance API密钥未设置')
+                : (apiKeys.okxApiKey ? '✅ OKX API密钥已设置' : '❌ OKX API密钥未设置')
+              }
+            </p>
+          </div>
+          <a 
+            href="/settings" 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm transition-colors"
+          >
+            设置API密钥
+          </a>
+        </div>
+      </div>
       
       <div className="bg-slate-800 rounded-lg p-6 mb-6">
         <h2 className="text-xl font-semibold text-white mb-4">输入订单信息</h2>
@@ -101,19 +160,14 @@ export function OrderVerificationPage() {
             />
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              钱包地址
-            </label>
-            <input 
-              type="text" 
-              value={wallet}
-              onChange={(e) => setWallet(e.target.value)}
-              placeholder="请输入钱包地址"
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white"
-              required
-            />
-          </div>
+          {wallet && (
+            <div className="p-3 bg-slate-700 rounded-lg">
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                当前钱包地址
+              </label>
+              <p className="text-white text-sm font-mono break-all">{wallet}</p>
+            </div>
+          )}
           
           <button 
             type="submit"

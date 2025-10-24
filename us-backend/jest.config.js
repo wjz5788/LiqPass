@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   testMatch: ['**/__tests__/**/*.js', '**/?(*.)+(spec|test).js'],
@@ -7,4 +7,8 @@ module.exports = {
     'src/**/*.js',
     '!src/**/*.test.js',
   ],
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1'
+  },
+  transform: {}
 };

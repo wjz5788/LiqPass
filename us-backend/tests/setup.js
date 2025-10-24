@@ -1,5 +1,5 @@
 // Setup file for backend tests
-const db = require('../src/db');
+import db from '../src/db.js';
 
 // Clear database before each test
 beforeEach(() => {

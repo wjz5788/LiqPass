@@ -1,42 +1,271 @@
-# API接口文档
+# LiqPass API接口文档
 
 ## 📋 文档概述
 
-本文档详细描述了LiqPass项目的完整API接口规范，包括美国服务器、日本验证服务器以及前端API客户端的接口定义。
+本文档详细描述了LiqPass项目的所有API接口规范，包括美国后端服务器、日本验证服务器以及前端API客户端的完整接口定义。
 
-## 🏗️ 整体架构
+## 🏗️ API架构概览
 
-### API调用流程
+### API服务组件
+
+| 服务组件 | 端口 | 主要功能 | 接口数量 |
+|----------|------|----------|----------|
+| **美国后端服务器** | 8080 | 核心业务逻辑、订单管理、理赔处理 | 7个接口 |
+| **日本验证服务器** | 8787 | 订单验证、交易所API集成 | 2个接口 |
+| **前端API客户端** | - | API请求封装、错误处理 | 统一封装 |
+
+### 通用规范
+
+#### 1. 请求头规范
+```http
+Content-Type: application/json
+Accept: application/json
+Idempotency-Key: <unique_key>  # 幂等性保护
+Authorization: Bearer <token>  # 可选认证
 ```
-前端 (React) → 美国后端 (Express) → 日本验证服务器 (Express)
+
+#### 2. 响应格式
+```json
+{
+  "success": true,
+  "data": {},
+  "message": "操作成功",
+  "timestamp": "2024-01-01T00:00:00Z"
+}
 ```
 
-### 服务器配置
+#### 3. 错误响应格式
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "参数验证失败",
+    "details": ["wallet字段不能为空"]
+  },
+  "timestamp": "2024-01-01T00:00:00Z"
+}
+```
 
-| 组件 | 端口 | 主要功能 |
-|------|------|----------|
-| **美国前端** | 5173 | 用户界面、订单创建、验证提交 |
-| **美国后端** | 8080 | API服务、订单管理、理赔处理 |
-| **日本验证服务器** | 8787 | 订单验证、交易所API集成 |
-
-## 🔌 美国后端API接口
+## 🔌 美国后端服务器API (端口: 8080)
 
 ### 1. 健康检查接口
 
-**接口路径：** `GET /healthz`
+#### GET /health
+**描述**: 检查服务器健康状态
 
-**请求头：**
+**请求参数**: 无
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "uptime": 3600
+  },
+  "message": "服务运行正常"
+}
 ```
+
+### 2. 产品目录接口
+
+#### GET /catalog
+**描述**: 获取可购买的保险产品目录
+
+**请求参数**: 无
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "products": [
+      {
+        "skuId": "binance-eth-usdt-1d",
+        "exchange": "binance",
+        "pair": "ETH-USDT",
+        "duration": "1d",
+        "premium": 5000000,
+        "payout": 100000000,
+        "description": "Binance ETH-USDT 1天杠杆保险"
+      }
+    ]
+  },
+  "message": "产品目录获取成功"
+}
+```
+
+### 3. 订单创建接口
+
+#### POST /orders
+**描述**: 创建新的保险订单
+
+**请求头**:
+```http
+Idempotency-Key: order-123456789
 Content-Type: application/json
 ```
 
-**响应格式：**
+**请求体**:
 ```json
 {
-  "status": "ok",
-  "payoutMode": "simulate",
-  "defaultPayoutAddress": "0x00195EcF4FF21aB985b13FC741Cdf276C71D88A1",
-  "timestamp": "2024-01-01T00:00:00.000Z"
+  "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+  "skuId": "binance-eth-usdt-1d",
+  "exchange": "binance",
+  "pair": "ETH-USDT",
+  "orderRef": "BINANCE_ORDER_123456"
+}
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "orderId": "ord_123456789",
+    "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+    "skuId": "binance-eth-usdt-1d",
+    "exchange": "binance",
+    "pair": "ETH-USDT",
+    "orderRef": "BINANCE_ORDER_123456",
+    "premium": 5000000,
+    "payout": 100000000,
+    "status": "pending",
+    "createdAt": "2024-01-01T00:00:00Z"
+  },
+  "message": "订单创建成功"
+}
+```
+
+### 4. 订单查询接口
+
+#### GET /orders/:orderId
+**描述**: 查询特定订单的详细信息
+
+**路径参数**:
+- `orderId`: 订单ID
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "orderId": "ord_123456789",
+    "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+    "skuId": "binance-eth-usdt-1d",
+    "exchange": "binance",
+    "pair": "ETH-USDT",
+    "orderRef": "BINANCE_ORDER_123456",
+    "premium": 5000000,
+    "payout": 100000000,
+    "status": "active",
+    "createdAt": "2024-01-01T00:00:00Z",
+    "verifiedAt": "2024-01-01T00:01:00Z"
+  },
+  "message": "订单查询成功"
+}
+```
+
+### 5. 理赔申请接口
+
+#### POST /claim
+**描述**: 提交保险理赔申请
+
+**请求头**:
+```http
+Idempotency-Key: claim-123456789
+Content-Type: application/json
+```
+
+**请求体**:
+```json
+{
+  "orderId": "ord_123456789",
+  "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+  "evidenceHash": "0x1234567890abcdef...",
+  "reason": "杠杆交易爆仓"
+}
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "clm_123456789",
+    "orderId": "ord_123456789",
+    "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+    "evidenceHash": "0x1234567890abcdef...",
+    "reason": "杠杆交易爆仓",
+    "status": "pending",
+    "createdAt": "2024-01-01T00:00:00Z"
+  },
+  "message": "理赔申请提交成功"
+}
+```
+
+### 6. 理赔查询接口
+
+#### GET /claim/:claimId
+**描述**: 查询特定理赔申请的详细信息
+
+**路径参数**:
+- `claimId`: 理赔申请ID
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "clm_123456789",
+    "orderId": "ord_123456789",
+    "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+    "evidenceHash": "0x1234567890abcdef...",
+    "reason": "杠杆交易爆仓",
+    "status": "approved",
+    "createdAt": "2024-01-01T00:00:00Z",
+    "approvedAt": "2024-01-01T01:00:00Z",
+    "payoutTxHash": "0xabcdef1234567890..."
+  },
+  "message": "理赔查询成功"
+}
+```
+
+### 7. 赔付执行接口
+
+#### POST /payout
+**描述**: 执行保险赔付（管理员接口）
+
+**请求头**:
+```http
+Authorization: Bearer admin-token
+Content-Type: application/json
+```
+
+**请求体**:
+```json
+{
+  "claimId": "clm_123456789",
+  "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+  "amount": 100000000
+}
+```
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "data": {
+    "claimId": "clm_123456789",
+    "wallet": "0x742d35Cc6634C0532925a3b8D6C39C5a4A5aD8F1",
+    "amount": 100000000,
+    "txHash": "0xabcdef1234567890...",
+    "status": "paid",
+    "paidAt": "2024-01-01T02:00:00Z"
+  },
+  "message": "赔付执行成功"
 }
 ```
 
@@ -194,58 +423,62 @@ interface AdminPayoutRequest {
 }
 ```
 
-## 🇯🇵 日本验证服务器API接口
+## 🇯🇵 日本验证服务器API (端口: 8787)
 
 ### 1. 健康检查接口
 
-**接口路径：** `GET /healthz`
+#### GET /health
+**描述**: 检查验证服务器健康状态
 
-**响应格式：**
+**请求参数**: 无
+
+**响应示例**:
 ```json
 {
-  "status": "ok",
-  "verifyMode": "real",
-  "okxBaseUrl": "https://www.okx.com",
-  "binanceBaseUrl": "https://api.binance.com",
-  "timestamp": "2024-01-01T00:00:00.000Z"
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "verifyMode": "real"
+  },
+  "message": "验证服务运行正常"
 }
 ```
 
 ### 2. 订单验证接口
 
-**接口路径：** `POST /verify/order`
+#### POST /verify/order
+**描述**: 验证订单信息的有效性
 
-**请求头：**
-```
+**请求头**:
+```http
 Content-Type: application/json
-X-MBX-APIKEY: <Binance API Key> (可选)
-OK-ACCESS-KEY: <OKX API Key> (可选)
-OK-ACCESS-PASSPHRASE: <OKX Passphrase> (可选)
 ```
 
-**请求参数：**
-```typescript
-interface VerifyOrderRequest {
-  exchange: string;      // 交易所
-  pair: string;         // 交易对
-  orderRef: string;     // 订单引用
-  wallet: string;       // 钱包地址
+**请求体**:
+```json
+{
+  "exchange": "binance",
+  "pair": "ETH-USDT",
+  "orderRef": "BINANCE_ORDER_123456",
+  "apiKey": "binance_api_key_encrypted",
+  "apiSecret": "binance_api_secret_encrypted"
 }
 ```
 
-**响应格式：**
+**响应示例**:
 ```json
 {
-  "status": "ok",
-  "exchange": "binance",
-  "pair": "BTCUSDT",
-  "orderRef": "订单号",
-  "wallet": "0x...",
-  "diagnostics": {
-    "message": "Verification stub response",
-    "verifyMode": "real",
-    "receivedAt": "2024-01-01T00:00:00.000Z"
-  }
+  "success": true,
+  "data": {
+    "valid": true,
+    "orderExists": true,
+    "orderStatus": "active",
+    "leverage": 10,
+    "positionSize": 1000,
+    "verifiedAt": "2024-01-01T00:00:00Z"
+  },
+  "message": "订单验证成功"
 }
 ```
 

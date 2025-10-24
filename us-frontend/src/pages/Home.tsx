@@ -1,20 +1,35 @@
+/**
+ * 首页组件 - 展示LiqPass保险平台的主页
+ * @file Home.tsx
+ * @author LiqPass Team
+ * @description 包含钱包连接、产品预览、功能介绍等核心功能
+ */
+
 import React, { useEffect, useState } from 'react';
 import { initHome } from './homeInit';
 import { getSkus, type Sku } from '../services/catalog';
 
+/**
+ * 首页组件
+ * @returns 首页JSX元素
+ */
 export function HomePage() {
+  // 状态管理：产品列表和加载状态
   const [skus, setSkus] = useState<Sku[]>([]);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * 组件挂载时加载产品数据
+   */
   useEffect(() => {
-    // Load products for preview
+    // 加载产品预览数据
     getSkus()
       .then((data) => {
-        setSkus(data.slice(0, 3)); // Show max 3 products on homepage
+        setSkus(data.slice(0, 3)); // 首页最多显示3个产品
       })
       .catch((error) => {
         console.error('Failed to load products for homepage:', error);
-        // When the homepage fails to load, do not display errors, just hide the product preview
+        // 首页加载失败时不显示错误，只隐藏产品预览
       })
       .finally(() => setLoading(false));
   }, []);

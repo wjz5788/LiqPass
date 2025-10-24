@@ -1,26 +1,35 @@
-import express from 'express';
-import cors from 'cors';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import crypto from 'node:crypto';
-import { config as loadEnv } from 'dotenv';
-import db from './db.js';
+/**
+ * @file server.js
+ * @description 美国后端服务器主文件，处理API请求、数据库操作和与日本验证服务器的交互
+ */
 
+// 导入必要的依赖包
+import express from 'express';  // Web服务器框架
+import cors from 'cors';        // 跨域资源共享
+import fs from 'node:fs';       // 文件系统操作
+import path from 'node:path';   // 路径处理
+import { fileURLToPath } from 'node:url';  // URL转文件路径
+import crypto from 'node:crypto';  // 加密功能
+import { config as loadEnv } from 'dotenv';  // 环境变量加载
+import db from './db.js';  // 数据库连接
+
+// 获取当前文件路径和目录
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SERVICE_ROOT = path.resolve(__dirname, '..');
 
+// 加载环境变量配置
 loadEnv({ path: path.resolve(SERVICE_ROOT, '.env.us') });
 
-const PORT = Number.parseInt(process.env.US_PORT ?? process.env.PORT ?? '3001', 10);
-const PAYOUT_MODE = process.env.PAYOUT_MODE ?? 'simulate';
+// 服务器配置常量
+const PORT = Number.parseInt(process.env.US_PORT ?? process.env.PORT ?? '3001', 10);  // 服务器端口
+const PAYOUT_MODE = process.env.PAYOUT_MODE ?? 'simulate';  // 赔付模式（模拟或实际）
 const DEFAULT_PAYOUT_ADDRESS =
-  process.env.DEFAULT_PAYOUT_ADDRESS ?? '0x00195EcF4FF21aB985b13FC741Cdf276C71D88A1';
-const LOG_PATH = path.resolve(SERVICE_ROOT, process.env.LOG_PATH ?? './logs/us-backend.log');
-const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN ?? 'http://localhost:5173';
+  process.env.DEFAULT_PAYOUT_ADDRESS ?? '0x00195EcF4FF21aB985b13FC741Cdf276C71D88A1';  // 默认赔付地址
+const LOG_PATH = path.resolve(SERVICE_ROOT, process.env.LOG_PATH ?? './logs/us-backend.log');  // 日志文件路径
+const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN ?? 'http://localhost:5173,http://localhost:5174';  // 允许的跨域来源
 const ALLOWED_HEADERS = (process.env.ALLOWED_HEADERS ??
-  'Content-Type,Authorization,X-Service-Token,Idempotency-Key')
+  'Content-Type,Authorization,X-Service-Token,Idempotency-Key')  // 允许的HTTP头
   .split(',')
   .map((header) => header.trim())
   .filter(Boolean);
@@ -448,6 +457,169 @@ app.get('/claim/:claimId', (req, res, next) => {
       pair: claimWithOrder.pair,
       orderRef: claimWithOrder.orderRef,
       premium: claimWithOrder.premium
+    };
+
+    res.locals.logContext = {
+      ...res.locals.logContext,
+      wallet: claimWithOrder.wallet,
+      orderId: claimWithOrder.orderId,
+      msg: 'claim status retrieved',
+    };
+
+    res.status(200).json(responsePayload);
+  } catch (error) {
+    error.statusCode = 500;
+    return next(error);
+  }
+});
+
+// 订单验证接口 - 调用日本服务器进行验证
+app.post('/verify/order', async (req, res, next) => {
+  const { exchange, pair, orderRef, wallet } = req.body ?? {};
+  res.locals.logContext.wallet = wallet;
+
+  if (!exchange || !pair || !orderRef || !wallet) {
+    const error = new Error('Missing required fields: exchange, pair, orderRef, wallet');
+    error.statusCode = 400;
+    return next(error);
+  }
+
+  try {
+    // 调用日本服务器进行订单验证
+    const jpVerifyUrl = process.env.JP_VERIFY_URL ?? 'http://localhost:8788';
+    const response = await fetch(`${jpVerifyUrl}/verify/order`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        exchange,
+        pair,
+        orderRef,
+        wallet,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = new Error(`Japanese verification server returned ${response.status}`);
+      error.statusCode = 502; // Bad Gateway
+      return next(error);
+    }
+
+    const jpResponse = await response.json();
+    
+    // 构建美国后端格式的响应
+    const responsePayload = {
+      isValid: jpResponse.status === 'ok',
+      orderRef,
+      wallet,
+      exchange,
+      pair,
+      orderDetails: jpResponse.parsed ? {
+        status: 'verified',
+        side: jpResponse.parsed.side,
+        quantity: jpResponse.parsed.qty ? parseFloat(jpResponse.parsed.qty) : undefined,
+        price: jpResponse.parsed.avgPx ? parseFloat(jpResponse.parsed.avgPx) : undefined,
+        liquidationPrice: jpResponse.parsed.liqPx ? parseFloat(jpResponse.parsed.liqPx) : undefined,
+        timestamp: new Date().toISOString(),
+      } : undefined,
+      errorMessage: jpResponse.status === 'fail' ? '订单验证失败' : undefined,
+      evidenceHint: jpResponse.evidenceHint,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.locals.logContext = {
+      ...res.locals.logContext,
+      msg: 'order verification completed',
+    };
+
+    res.status(200).json(responsePayload);
+  } catch (error) {
+    error.statusCode = 500;
+    return next(error);
+  }
+});
+
+// 理赔验证接口
+app.post('/verify/claim', (req, res, next) => {
+  const { claimId, orderRef, wallet } = req.body ?? {};
+  res.locals.logContext.claimId = claimId;
+  res.locals.logContext.wallet = wallet;
+
+  if (!claimId || !orderRef || !wallet) {
+    const error = new Error('Missing required fields: claimId, orderRef, wallet');
+    error.statusCode = 400;
+    return next(error);
+  }
+
+  try {
+    // 查询理赔状态
+    const claimWithOrder = queries.getClaimWithOrder.get(claimId);
+    
+    if (!claimWithOrder) {
+      const error = new Error('Claim not found');
+      error.statusCode = 404;
+      return next(error);
+    }
+
+    // 构建响应数据
+    const responsePayload = {
+      isValid: claimWithOrder.status === 'approved',
+      claimId,
+      orderRef,
+      wallet,
+      claimStatus: claimWithOrder.status,
+      payoutAmount: claimWithOrder.payoutAmount,
+      payoutCurrency: 'USDC',
+      payoutStatus: claimWithOrder.status === 'approved' ? 'pending' : 'none',
+      errorMessage: claimWithOrder.status === 'rejected' ? claimWithOrder.reason : undefined,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.locals.logContext = {
+      ...res.locals.logContext,
+      msg: 'claim verification completed',
+    };
+
+    res.status(200).json(responsePayload);
+  } catch (error) {
+    error.statusCode = 500;
+    return next(error);
+  }
+});
+
+// 理赔状态查询接口（兼容前端verification.ts）
+app.get('/claims/:claimId/status', (req, res, next) => {
+  const { claimId } = req.params;
+  res.locals.logContext.claimId = claimId;
+
+  if (!claimId) {
+    const error = new Error('Missing claimId parameter');
+    error.statusCode = 400;
+    return next(error);
+  }
+
+  try {
+    const claimWithOrder = queries.getClaimWithOrder.get(claimId);
+    
+    if (!claimWithOrder) {
+      const error = new Error('Claim not found');
+      error.statusCode = 404;
+      return next(error);
+    }
+
+    // 构建响应数据
+    const responsePayload = {
+      isValid: claimWithOrder.status === 'approved',
+      claimId,
+      orderRef: claimWithOrder.orderRef,
+      wallet: claimWithOrder.wallet,
+      claimStatus: claimWithOrder.status,
+      payoutAmount: claimWithOrder.payoutAmount,
+      payoutCurrency: 'USDC',
+      payoutStatus: claimWithOrder.status === 'approved' ? 'pending' : 'none',
+      errorMessage: claimWithOrder.status === 'rejected' ? claimWithOrder.reason : undefined,
+      timestamp: new Date().toISOString(),
     };
 
     res.locals.logContext = {

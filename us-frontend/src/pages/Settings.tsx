@@ -135,8 +135,9 @@ const Settings: React.FC = () => {
                   value={apiKeys.binanceApiKey}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter your Binance API key"
+                  placeholder="Enter your Binance API key (64字符)"
                 />
+                <p className="text-slate-400 text-xs mt-1">格式：64字符的字符串，例如：a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">
@@ -148,8 +149,9 @@ const Settings: React.FC = () => {
                   value={apiKeys.binanceSecretKey}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter your Binance Secret key"
+                  placeholder="Enter your Binance Secret key (64字符)"
                 />
+                <p className="text-slate-400 text-xs mt-1">格式：64字符的密钥，与API Key配对使用</p>
               </div>
             </div>
           </div>
@@ -168,8 +170,9 @@ const Settings: React.FC = () => {
                   value={apiKeys.okxApiKey}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter your OKX API key"
+                  placeholder="Enter your OKX API key (36字符UUID格式)"
                 />
+                <p className="text-slate-400 text-xs mt-1">格式：36字符的UUID，例如：a1b2c3d4-e5f6-7890-abcd-ef1234567890</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">
@@ -183,6 +186,7 @@ const Settings: React.FC = () => {
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter your OKX Secret key"
                 />
+                <p className="text-slate-400 text-xs mt-1">您的API密钥对应的密钥，用于生成请求签名</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">
@@ -194,8 +198,9 @@ const Settings: React.FC = () => {
                   value={apiKeys.okxPassphrase}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter your OKX Passphrase"
+                  placeholder="Enter your OKX Passphrase (8-32字符)"
                 />
+                <p className="text-slate-400 text-xs mt-1">创建API时设置的密码，8-32字符，需包含大小写字母、数字和特殊字符</p>
               </div>
             </div>
           </div>
