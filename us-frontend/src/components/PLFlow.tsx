@@ -3,6 +3,7 @@ import { getSkus, type Sku } from '../services/catalog';
 import { createOrder, type OrderPayload } from '../services/order';
 import { createClaim, type ClaimPayload } from '../services/claim';
 import { useWallet } from '../contexts/WalletContext';
+import { EnhancedBuyButton } from './Permit2BuyButton';
 
 export function PLFlow() {
   const { account, isConnected, isConnecting, error, connectWallet } = useWallet();
@@ -114,25 +115,11 @@ export function PLFlow() {
         )}
         
         {skus.length > 0 ? (
-          <ul className="space-y-3">
+          <div className="space-y-4">
             {skus.map(sku => (
-              <li key={sku.id} className="p-4 bg-slate-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <strong className="text-white">{sku.title}</strong>
-                  <p className="text-sm text-slate-400">
-                    Exchange: {sku.exchange} | Premium: ${(sku.premium / 100).toFixed(2)} | Payout: ${(sku.payout / 100).toFixed(2)}
-                  </p>
-                </div>
-                <button 
-                  onClick={() => handleBuyClick(sku)}
-                  disabled={!isConnected || buyStatus.includes('Creating')}
-                  className="rounded-full bg-indigo-500 px-5 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-700/30 transition hover:bg-indigo-400 disabled:opacity-50"
-                >
-                  {buyStatus.includes('Creating') ? 'Creating Order...' : 'Buy'}
-                </button>
-              </li>
+              <EnhancedBuyButton key={sku.id} sku={sku} />
             ))}
-          </ul>
+          </div>
         ) : (
           <p className="text-slate-400">Loading products...</p>
         )}

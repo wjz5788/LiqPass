@@ -42,11 +42,14 @@
     "react-dom": "^18.3.1",
     "tailwindcss": "^4.1.15",
     "ts-jest": "^29.4.5",
-    "typescript": "file:vendor/typescript",
+    "typescript": "^5.0.0",
     "vite": "^5.3.1"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.15",
-    "react-router-dom": "^7.9.4"
+    "react-router-dom": "^7.9.4",
+    "@uniswap/permit2-sdk": "^1.4.0",
+    "viem": "^2.0.0",
+    "wagmi": "^2.0.0"
   }
 }

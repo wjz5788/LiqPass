@@ -17,6 +17,7 @@ import { PLFlow } from './components/PLFlow';
 import Settings from './pages/Settings';
 import { WalletConnectNav } from './components/WalletConnectNav';
 import { WalletProvider } from './contexts/WalletContext';
+import { NewVerificationFlowPage } from './pages/NewVerificationFlow';
 
 const routes: RouteDefinition[] = [
   Route({ path: '/', element: { id: 'home', label: { zh: 'Home', en: 'Home' }, component: HomePage } }),
@@ -34,6 +35,7 @@ const routes: RouteDefinition[] = [
   Route({ path: '/help', element: { id: 'help', label: { zh: 'Help', en: 'Help' }, component: HelpPage } }),
   Route({ path: '/pl-flow', element: { id: 'pl-flow', label: { zh: 'PL Flow', en: 'PL Flow' }, component: PLFlow } }),
   Route({ path: '/settings', element: { id: 'settings', label: { zh: 'Settings', en: 'Settings' }, component: Settings } }),
+  Route({ path: '/new-verification-flow', element: { id: 'new-verification-flow', label: { zh: '新验证流程', en: 'New Verification Flow' }, component: NewVerificationFlowPage } }),
 ];
 
 function getCurrentPath(): string {
@@ -59,7 +61,7 @@ export default function App() {
           <div className="container mx-auto px-4 py-4">
             <nav className="flex items-center justify-between">
               <div className="flex space-x-6">
-                {routes.filter(r => r.id !== 'settings' && r.id !== 'new-user-verification').map((r) => (
+                {routes.filter(r => r.id !== 'settings' && r.id !== 'new-user-verification' && r.id !== 'new-verification-flow').map((r) => (
                   <a
                     key={r.id}
                     href={r.path}
@@ -70,6 +72,14 @@ export default function App() {
                     {r.label.en}
                   </a>
                 ))}
+                <a
+                  href="/new-verification-flow"
+                  className={`text-sm font-medium transition-colors hover:text-white ${
+                    path === '/new-verification-flow' ? 'text-white' : 'text-slate-400'
+                  }`}
+                >
+                  新验证流程
+                </a>
                 <a
                   href="/new-user-verification"
                   className={`text-sm font-medium transition-colors hover:text-white ${

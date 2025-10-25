@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useWallet } from '../contexts/WalletContext';
+import { EnhancedBuyButton } from '../components/Permit2BuyButton';
 
 export function VerifyPage() {
+  const { isConnected, address } = useWallet();
   const [skus, setSkus] = useState([]);
   const [selectedSku, setSelectedSku] = useState('');
   const [exchange, setExchange] = useState('');
@@ -13,6 +16,11 @@ export function VerifyPage() {
   const [messageType, setMessageType] = useState(''); // 'success' or 'error'
 
   useEffect(() => {
+    // Set wallet address if connected
+    if (isConnected && address) {
+      setWallet(address);
+    }
+    
     // Fetch available SKUs from the backend
     fetch('/catalog/skus')
       .then(response => response.json())
@@ -28,7 +36,7 @@ export function VerifyPage() {
         setMessage('Failed to load available products');
         setMessageType('error');
       });
-  }, []);
+  }, [isConnected, address]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

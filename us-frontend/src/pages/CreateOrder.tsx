@@ -3,6 +3,7 @@ import { useWallet } from '../contexts/WalletContext';
 import { createOrder } from '../services/order';
 import { getSkus } from '../services/catalog';
 import type { Sku } from '../services/catalog';
+import { createUSDCPaymentService, type PaymentResult } from '../services/usdcPayment';
 
 export function CreateOrderPage() {
   const { account } = useWallet();
@@ -75,6 +76,25 @@ export function CreateOrderPage() {
     setSuccess('');
 
     try {
+      // 第一步：执行USDC支付
+      setSuccess('正在处理USDC支付...');
+      
+      // 创建USDC支付服务实例
+      const paymentService = createUSDCPaymentService(window.ethereum);
+      
+      // 生成唯一订单ID
+      const uniqueOrderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      // 执行智能支付
+      const paymentResult = await paymentService.smartPayment(selectedSku.premium, uniqueOrderId);
+      
+      if (!paymentResult.success) {
+        throw new Error(paymentResult.error || 'USDC支付失败');
+      }
+      
+      setSuccess('USDC支付成功，正在创建订单记录...');
+      
+      // 第二步：创建订单记录
       const payload = {
         skuId: selectedSku.id,
         exchange: selectedSku.exchange,
@@ -83,14 +103,16 @@ export function CreateOrderPage() {
         wallet: account,
         premium: selectedSku.premium,
         payout: selectedSku.payout,
-        paymentMethod: 'wallet' as 'wallet' | 'card',
+        paymentMethod: 'usdc' as 'wallet' | 'card' | 'usdc',
+        transactionHash: paymentResult.transactionHash,
+        paymentMethodUsed: paymentResult.methodUsed
       };
 
       const result = await createOrder(payload);
-      setSuccess(`订单创建成功！订单ID: ${result.orderId}`);
+      setSuccess(`订单创建成功！订单ID: ${result.orderId}，交易哈希: ${paymentResult.transactionHash?.slice(0, 16)}...`);
       
       // 清除验证状态，避免重复使用
-      localStorage.removeItem(`verification_${wallet}_${orderId}`);
+      localStorage.removeItem(`verification_${account}_${orderId}`);
       
       // 重置表单
       setOrderId('');

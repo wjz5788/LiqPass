@@ -9,7 +9,9 @@ export interface OrderPayload {
   wallet: string; // The user's wallet address
   premium: number;
   payout: number;
-  paymentMethod: 'wallet' | 'card'; // Example payment method
+  paymentMethod: 'wallet' | 'card' | 'usdc'; // Payment method
+  transactionHash?: string; // USDC transaction hash
+  paymentMethodUsed?: 'permit2' | 'usdc'; // Specific payment method used
 }
 
 export interface OrderResponse {
