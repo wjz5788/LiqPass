@@ -8,7 +8,8 @@ import dbManager from '../database/db.js';
 const router = express.Router();
 
 // jp-verify 服务配置
-const JP_VERIFY_BASE_URL = process.env.JP_VERIFY_BASE_URL || 'http://127.0.0.1:8082';
+const JP_VERIFY_BASE_URL = process.env.JP_VERIFY_BASE_URL || process.env.JP_VERIFY_BASE || 'http://127.0.0.1:8082';
+import * as jpVerifyClient from '../services/jpVerifyClient.js';
 
 interface VerifyOkxRequest {
   ordId: string;
@@ -29,6 +30,27 @@ interface VerifyOkxRequest {
   };
 }
 
+function normalizeInstId(input: string): string {
+  const raw = String(input || '').trim();
+  if (!raw) return raw;
+  const low = raw.toLowerCase().replace(/\s+/g, '');
+  if (low === 'btuusdc') return 'BTC-USDC-SWAP';
+  if (raw.includes('-')) {
+    const parts = raw.split('-').map(p => p.trim().toUpperCase()).filter(Boolean);
+    if (parts.length === 2) return `${parts[0]}-${parts[1]}-SWAP`;
+    if (parts.length >= 3) return `${parts[0]}-${parts[1]}-${parts[2]}`;
+  }
+  if (low.endsWith('usdt')) {
+    const base = low.slice(0, low.length - 4).toUpperCase();
+    return `${base}-USDT-SWAP`;
+  }
+  if (low.endsWith('usdc')) {
+    const base = low.slice(0, low.length - 4).toUpperCase();
+    return `${base}-USDC-SWAP`;
+  }
+  return raw.toUpperCase();
+}
+
 /**
  * OKX 订单验证薄代理 - 转发到 jp-verify 服务
  */
@@ -38,10 +60,11 @@ const handleVerify: RequestHandler = async (req, res) => {
     const exchange = (request.exchange || 'okx').toLowerCase();
     const keyMode = request.keyMode ?? 'inline';
     const requestId = uuidv4();
+    const normalizedInstId = normalizeInstId(request.instId);
     
     console.log(`[${requestId}] 收到 OKX 验证请求:`, {
       ordId: request.ordId,
-      instId: request.instId,
+      instId: normalizedInstId,
       exchange,
       keyMode
     });
@@ -57,7 +80,7 @@ const handleVerify: RequestHandler = async (req, res) => {
       });
     }
 
-    if (!request.ordId || !request.instId) {
+    if (!request.ordId || !normalizedInstId) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -81,7 +104,7 @@ const handleVerify: RequestHandler = async (req, res) => {
     const jpVerifyRequest = {
       exchange: 'okx',
       ordId: request.ordId,
-      instId: request.instId,
+      instId: normalizedInstId,
       live: request.live ?? true,
       fresh: request.fresh ?? true,
       noCache: request.noCache ?? true,
@@ -103,16 +126,7 @@ const handleVerify: RequestHandler = async (req, res) => {
     console.log(`[${requestId}] 转发到 jp-verify: ${JP_VERIFY_BASE_URL}/api/verify`);
 
     // 转发请求到 jp-verify
-    const response = await axios.post(
-      `${JP_VERIFY_BASE_URL}/api/verify`,
-      jpVerifyRequest,
-      {
-        timeout: 30000, // 30秒超时
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    const response = await jpVerifyClient.verify(jpVerifyRequest, 30000);
 
     console.log(`[${requestId}] jp-verify 响应状态: ${response.status}`);
 
@@ -121,7 +135,7 @@ const handleVerify: RequestHandler = async (req, res) => {
     const liqFlagStr = normalizedData?.liq_flag;
     const isLiquidated = liqFlagStr === 'true' || liqFlagStr === true;
     const ordMatches = String(request.ordId) === String(meta.ordId);
-    const instMatches = String(request.instId) === String(meta.instId);
+    const instMatches = String(normalizedInstId) === String(meta.instId);
     const hasNormalized = !!normalizedData;
     let eligibleForPurchase = ordMatches && instMatches && hasNormalized;
     let eligibilityReason: string | null = null;
@@ -209,7 +223,7 @@ const handleVerify: RequestHandler = async (req, res) => {
         String(userId),
         'okx',
         String(request.ordId),
-        String(request.instId),
+        String(normalizedInstId),
         normalized,
         checks,
         String(evidenceId),
@@ -283,6 +297,7 @@ const handleVerifyStandard: RequestHandler = async (req, res) => {
     const exchange = (request.exchange || 'okx').toLowerCase();
     const keyMode = request.keyMode ?? 'inline';
     const requestId = uuidv4();
+    const normalizedInstId = normalizeInstId(request.instId);
 
     if (exchange !== 'okx') {
       return res.status(400).json({
@@ -294,7 +309,7 @@ const handleVerifyStandard: RequestHandler = async (req, res) => {
       });
     }
 
-    if (!request.ordId || !request.instId) {
+    if (!request.ordId || !normalizedInstId) {
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -317,7 +332,7 @@ const handleVerifyStandard: RequestHandler = async (req, res) => {
     const jpVerifyRequest = {
       exchange: 'okx',
       ordId: request.ordId,
-      instId: request.instId,
+      instId: normalizedInstId,
       live: request.live ?? true,
       fresh: request.fresh ?? true,
       noCache: request.noCache ?? true,
@@ -333,15 +348,7 @@ const handleVerifyStandard: RequestHandler = async (req, res) => {
       }
     };
 
-    const response = await axios.post(
-      `${JP_VERIFY_BASE_URL}/api/verify/standard`,
-      jpVerifyRequest,
-      {
-        timeout: 30000,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
-
+    const response = await jpVerifyClient.verifyStandard(jpVerifyRequest, 30000);
     const std = response.data as any;
     const payload = {
       ...std,

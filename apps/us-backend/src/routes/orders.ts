@@ -94,6 +94,9 @@ export default function ordersRoutes(orderService: OrderService) {
             LIMIT 1
           )                  AS orderRef,
           o.premium_usdc     AS premium_usdc_6d,
+          o.principal_usdc   AS principal_usdc_6d,
+          o.leverage         AS leverage,
+          o.payout_usdc      AS payout_usdc_6d,
           o.created_at       AS orderCreatedAt
         FROM claims c
         JOIN orders o ON o.id = c.order_id
@@ -216,6 +219,69 @@ export default function ordersRoutes(orderService: OrderService) {
         code: 'INTERNAL_ERROR',
         message: 'Unexpected error while creating order.'
       });
+    }
+  });
+
+  // 最小创建：用于链上支付前占位，避免 /submit-tx 找不到订单
+  router.post('/orders/minimal-create', async (req, res) => {
+    try {
+      const { orderId, wallet, premiumUSDC } = req.body as any;
+      const id = String(orderId || '').trim();
+      const w = String(wallet || '').trim().toLowerCase();
+      const premium = Number(premiumUSDC);
+      if (!/^ord_[a-f0-9\-]{36}$/.test(id) && !/^0x[0-9a-fA-F]{64}$/.test(id) && id.length < 16) {
+        return res.status(400).json({ ok: false, code: 'INVALID_ORDER_ID', message: '订单ID无效' });
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(w)) {
+        return res.status(400).json({ ok: false, code: 'INVALID_WALLET', message: '钱包地址无效' });
+      }
+      if (!Number.isFinite(premium) || premium <= 0) {
+        return res.status(400).json({ ok: false, code: 'INVALID_PREMIUM', message: '保费金额无效' });
+      }
+      const exists = db.get(`SELECT id FROM orders WHERE id = ? LIMIT 1`, id) as any;
+      if (exists) {
+        return res.json({ ok: true, created: false });
+      }
+      const nowIso = new Date().toISOString();
+      const premium6d = Math.round(premium * 1_000_000);
+      db.run(
+        `INSERT INTO orders (
+          id, user_id, wallet_address, product_id, principal_usdc, leverage,
+          premium_usdc, payout_usdc, duration_hours, status, payment_proof_id,
+          created_at, updated_at, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id,
+        'user-id-placeholder',
+        w,
+        'sku_24h_liq',
+        0,
+        0,
+        premium6d,
+        0,
+        24,
+        'pending',
+        null,
+        nowIso,
+        nowIso,
+        new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      );
+      try {
+        const existingClaim = db.get(`SELECT id FROM claims WHERE order_id = ? LIMIT 1`, id) as any;
+        if (!existingClaim) {
+          const claimId = `clm_${uuid()}`;
+          db.run(
+            `INSERT INTO claims (id, order_id, user_id, user_wallet, status, currency, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'pending', 'USDC', datetime('now'), datetime('now'))`,
+            claimId,
+            id,
+            'user-id-placeholder',
+            w
+          );
+        }
+      } catch {}
+      return res.status(201).json({ ok: true, created: true });
+    } catch (error) {
+      return res.status(500).json({ ok: false, code: 'INTERNAL_ERROR', message: '最小化创建订单失败' });
     }
   });
 

@@ -1,0 +1,326 @@
+{
+  "meta": {
+    "exchange": "okx",
+    "instId": "BTC-USDT-SWAP",
+    "ordId": "2940071038556348417",
+    "verifiedAt": "2025-11-16T05:53:39.371799+00:00",
+    "live": true,
+    "fresh": true,
+    "requestId": "df3f5ff3-6240-4f7e-ac59-dfa4ff0dc9d9",
+    "version": "jp-verify@1.0.0",
+    "source": "okx-api"
+  },
+  "normalized": {
+    "data": {
+      "exchange": "okx",
+      "symbol": "BTC-USDT-SWAP",
+      "order_id": "2940071038556348417",
+      "side": "sell",
+      "timestamp_sec": "1760123344",
+      "filled_sz": "0.64",
+      "avg_px": "116495.1",
+      "fills_total_volume": "74556.8640",
+      "fills_total_fee": "-0.3742",
+      "fills_total_pnl": "-7.1526",
+      "fills_liq_count": "1",
+      "liq_flag": "true",
+      "reason": "forced-liquidation"
+    },
+    "canonical_json": "{\"avg_px\":\"116495.1\",\"exchange\":\"okx\",\"filled_sz\":\"0.64\",\"fills_liq_count\":\"1\",\"fills_total_fee\":\"-0.3742\",\"fills_total_pnl\":\"-7.1526\",\"fills_total_volume\":\"74556.8640\",\"liq_flag\":\"true\",\"order_id\":\"2940071038556348417\",\"reason\":\"forced-liquidation\",\"side\":\"sell\",\"symbol\":\"BTC-USDT-SWAP\",\"timestamp_sec\":\"1760123344\"}",
+    "evidence_root": "0xe34934b1a170d76760933f4860cee1a01f55c9b0541e1acb20afdabb95673db5"
+  },
+  "raw": {
+    "trade/order": {
+      "status_code": 200,
+      "data": {
+        "code": "0",
+        "data": [
+          {
+            "accFillSz": "0.64",
+            "algoClOrdId": "",
+            "algoId": "",
+            "attachAlgoClOrdId": "",
+            "attachAlgoOrds": [],
+            "avgPx": "116495.1",
+            "cTime": "1760123344933",
+            "cancelSource": "",
+            "cancelSourceReason": "",
+            "category": "full_liquidation",
+            "ccy": "USDT",
+            "clOrdId": "",
+            "fee": "-0.37422752",
+            "feeCcy": "USDT",
+            "fillPx": "116495.1",
+            "fillSz": "0.64",
+            "fillTime": "1760123344933",
+            "instId": "BTC-USDT-SWAP",
+            "instType": "SWAP",
+            "isTpLimit": "false",
+            "lever": "100.0",
+            "linkedAlgoOrd": {
+              "algoId": ""
+            },
+            "ordId": "2940071038556348417",
+            "ordType": "limit",
+            "pnl": "-7.15264",
+            "posSide": "long",
+            "px": "116495.1",
+            "pxType": "",
+            "pxUsd": "",
+            "pxVol": "",
+            "quickMgnType": "",
+            "rebate": "0",
+            "rebateCcy": "USDT",
+            "reduceOnly": "true",
+            "side": "sell",
+            "slOrdPx": "",
+            "slTriggerPx": "",
+            "slTriggerPxType": "",
+            "source": "",
+            "state": "filled",
+            "stpId": "",
+            "stpMode": "",
+            "sz": "0.64",
+            "tag": "",
+            "tdMode": "isolated",
+            "tgtCcy": "",
+            "tpOrdPx": "",
+            "tpTriggerPx": "",
+            "tpTriggerPxType": "",
+            "tradeId": "0",
+            "tradeQuoteCcy": "",
+            "uTime": "1760123344933"
+          }
+        ],
+        "msg": ""
+      },
+      "headers": {
+        "date": "Sun, 16 Nov 2025 05:53:36 GMT",
+        "content-type": "application/json",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "set-cookie": "locale=en-US; Max-Age=604800; Expires=Sun, 23-Nov-2025 05:53:36 GMT; Path=/, locale=en-US; Max-Age=604800; Expires=Sun, 23-Nov-2025 05:53:36 GMT; Path=/, __cf_bm=aZp05KTICKvJmDplIQBv76NGuZ92JbAAN41jCHRrOBk-1763272416-1.0.1.1-TV0SUcoRyFWVwTRaifTq8n7Wc1NUu6htLTIKIR06th8s6RFpx26jBy3XWvRY92yiL2vYAMlUoYPShz3TQdbWz9k4gJSUQbOgJSyn_3Curg4; path=/; expires=Sun, 16-Nov-25 06:23:36 GMT; domain=.okx.com; HttpOnly; Secure; SameSite=None",
+        "b-locale": "en_US, en_US",
+        "x-content-type-options": "nosniff, nosniff",
+        "x-xss-protection": "1; mode=block, 1; mode=block",
+        "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+        "pragma": "no-cache",
+        "expires": "0",
+        "strict-transport-security": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains",
+        "x-frame-options": "SAMEORIGIN, DENY",
+        "content-security-policy": "frame-ancestors 'self'",
+        "access-control-allow-origin": "*",
+        "x-brokerid": "0",
+        "cf-cache-status": "DYNAMIC",
+        "server": "cloudflare",
+        "cf-ray": "99f4ba9c5e13a447-NRT"
+      },
+      "fetched_at": "2025-11-16T05:53:36.875578+00:00"
+    },
+    "account/positions": {
+      "status_code": 200,
+      "data": {
+        "code": "0",
+        "data": [],
+        "msg": ""
+      },
+      "headers": {
+        "date": "Sun, 16 Nov 2025 05:53:37 GMT",
+        "content-type": "application/json",
+        "content-length": "31",
+        "connection": "keep-alive",
+        "cf-ray": "99f4baa10adee38f-NRT",
+        "set-cookie": "locale=en-US; Max-Age=604800; Expires=Sun, 23-Nov-2025 05:53:37 GMT; Path=/, __cf_bm=eASdyFTQ.iFTPbZxI4y7KooQphqzs7KssTSOpfm12QE-1763272417-1.0.1.1-0iYuzRhAwqHsHEcHbzMDydMZjR9nBgWzJI2iLJ2y6SxQVh6SjH3ZWe.CSxxuLYwuOFKgoofunNUd.VYiFFj8TuIzJJ6BrO7pMHxN4tnJyQE; path=/; expires=Sun, 16-Nov-25 06:23:37 GMT; domain=.okx.com; HttpOnly; Secure; SameSite=None",
+        "b-locale": "en_US",
+        "x-content-type-options": "nosniff, nosniff",
+        "x-xss-protection": "1; mode=block, 1; mode=block",
+        "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+        "pragma": "no-cache",
+        "expires": "0",
+        "x-frame-options": "SAMEORIGIN, DENY",
+        "content-security-policy": "frame-ancestors 'self'",
+        "vary": "Origin",
+        "x-brokerid": "0",
+        "strict-transport-security": "max-age=31536000; includeSubDomains",
+        "cf-cache-status": "DYNAMIC",
+        "server": "cloudflare"
+      },
+      "fetched_at": "2025-11-16T05:53:37.778200+00:00"
+    },
+    "public/instruments": {
+      "status_code": 200,
+      "data": {
+        "code": "0",
+        "data": [
+          {
+            "alias": "",
+            "auctionEndTime": "",
+            "baseCcy": "",
+            "category": "1",
+            "contTdSwTime": "",
+            "ctMult": "1",
+            "ctType": "linear",
+            "ctVal": "0.01",
+            "ctValCcy": "BTC",
+            "expTime": "",
+            "futureSettlement": false,
+            "instFamily": "BTC-USDT",
+            "instId": "BTC-USDT-SWAP",
+            "instIdCode": 10459,
+            "instType": "SWAP",
+            "lever": "100",
+            "listTime": "1573557408000",
+            "lotSz": "0.01",
+            "maxIcebergSz": "100000000.0000000000000000",
+            "maxLmtAmt": "20000000",
+            "maxLmtSz": "100000000",
+            "maxMktAmt": "",
+            "maxMktSz": "12000",
+            "maxPlatOILmt": "",
+            "maxStopSz": "12000",
+            "maxTriggerSz": "100000000.0000000000000000",
+            "maxTwapSz": "100000000.0000000000000000",
+            "minSz": "0.01",
+            "openType": "",
+            "optType": "",
+            "posLmtAmt": "",
+            "posLmtPct": "",
+            "preMktSwTime": "",
+            "quoteCcy": "",
+            "ruleType": "normal",
+            "settleCcy": "USDT",
+            "state": "live",
+            "stk": "",
+            "tickSz": "0.1",
+            "tradeQuoteCcyList": [],
+            "uly": "BTC-USDT"
+          }
+        ],
+        "msg": ""
+      },
+      "headers": {
+        "date": "Sun, 16 Nov 2025 05:53:38 GMT",
+        "content-type": "application/json",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "set-cookie": "locale=en-US; Max-Age=604800; Expires=Sun, 23-Nov-2025 05:53:38 GMT; Path=/, __cf_bm=CUDVhZodi3q7wwywH.oYrc.ikeufkuAhBAb2IbgiNn8-1763272418-1.0.1.1-r6KCGV1qBikfg_cSQozOBtDRC4uewH09x88SGcTDpM_8aTY3oxCziCsWeHgZN74YkdcrvafvxzP2bTfISpIRzQRPJnWuxGGsLM_BWSb3rXE; path=/; expires=Sun, 16-Nov-25 06:23:38 GMT; domain=.okx.com; HttpOnly; Secure; SameSite=None",
+        "b-locale": "en_US",
+        "x-content-type-options": "nosniff, nosniff",
+        "x-xss-protection": "1; mode=block, 1; mode=block",
+        "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+        "pragma": "no-cache",
+        "expires": "0",
+        "strict-transport-security": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains",
+        "x-frame-options": "SAMEORIGIN, DENY",
+        "content-security-policy": "frame-ancestors 'self'",
+        "vary": "Origin",
+        "x-brokerid": "0",
+        "cf-cache-status": "DYNAMIC",
+        "server": "cloudflare",
+        "cf-ray": "99f4baa6bda13c15-NRT"
+      },
+      "fetched_at": "2025-11-16T05:53:38.462809+00:00"
+    },
+    "trade/fills-history": {
+      "status_code": 200,
+      "data": {
+        "code": "0",
+        "data": [
+          {
+            "fillSz": "0.64",
+            "fillPxVol": "",
+            "fillFwdPx": "",
+            "fee": "-0.37422752",
+            "tradeQuoteCcy": "",
+            "ordId": "2940071038556348417",
+            "clOrdId": "",
+            "posSide": "long",
+            "fillMarkVol": "",
+            "tag": "",
+            "execType": "",
+            "fillIdxPx": "",
+            "side": "sell",
+            "fillPx": "116495.1",
+            "fillPnl": "-7.15264",
+            "instType": "SWAP",
+            "fillPxUsd": "",
+            "instId": "BTC-USDT-SWAP",
+            "billId": "2940071038556348418",
+            "subType": "104",
+            "fillTime": "1760123344933",
+            "tradeId": "-2940071038530957314",
+            "fillMarkPx": "",
+            "feeCcy": "USDT",
+            "ts": "1760123344933"
+          }
+        ],
+        "msg": ""
+      },
+      "headers": {
+        "date": "Sun, 16 Nov 2025 05:53:39 GMT",
+        "content-type": "application/json",
+        "transfer-encoding": "chunked",
+        "connection": "keep-alive",
+        "content-encoding": "gzip",
+        "set-cookie": "locale=en-US; Max-Age=604800; Expires=Sun, 23-Nov-2025 05:53:39 GMT; Path=/, locale=en-US; Max-Age=604800; Expires=Sun, 23-Nov-2025 05:53:39 GMT; Path=/, __cf_bm=GnvmF_qzuf3QC5fL46dSQcnYO_aAfOx.e4lp9ZQtzHQ-1763272419-1.0.1.1-x3FPc34UZsciSLr8_DqV7YM8QuhnTiODuHCu9ZJjRFA5Xqt40uT8ZkxsS3B__X301PI7ERQXhNfFZoadMV97gn4IAG7mHRgKKtPnauQ3l8c; path=/; expires=Sun, 16-Nov-25 06:23:39 GMT; domain=.okx.com; HttpOnly; Secure; SameSite=None",
+        "b-locale": "en_US, en_US",
+        "x-content-type-options": "nosniff, nosniff",
+        "x-xss-protection": "1; mode=block, 1; mode=block",
+        "cache-control": "no-cache, no-store, max-age=0, must-revalidate",
+        "pragma": "no-cache",
+        "expires": "0",
+        "strict-transport-security": "max-age=31536000 ; includeSubDomains, max-age=31536000; includeSubDomains",
+        "x-frame-options": "SAMEORIGIN, DENY",
+        "ok-after": "2940071038556348418",
+        "ok-before": "2940071038556348418",
+        "content-security-policy": "frame-ancestors 'self'",
+        "access-control-allow-origin": "*",
+        "x-brokerid": "0",
+        "cf-cache-status": "DYNAMIC",
+        "server": "cloudflare",
+        "cf-ray": "99f4baac4ba36c77-NRT"
+      },
+      "fetched_at": "2025-11-16T05:53:39.367873+00:00"
+    }
+  },
+  "evidence": {
+    "schemaVersion": "1.0.0",
+    "hashAlgo": "keccak256",
+    "serialization": "jcs-canonical-json",
+    "leaves": [
+      {
+        "path": "raw.trade/order",
+        "hash": "0xb235fbc03d18c32855489e8e2d04b4594d6af3a47abfc49af83f116e196fc750"
+      },
+      {
+        "path": "raw.account/positions",
+        "hash": "0xab9f2e09895501855a3f4c88315dcacb4274062f53ce41e7d49f677e6b35ccbb"
+      },
+      {
+        "path": "raw.trade/fills-history",
+        "hash": "0x51bb86bf57207c78836efe95450daf86c31eb531ed23ac029a93b24d757efac0"
+      },
+      {
+        "path": "normalized.evidence",
+        "hash": "0xe34934b1a170d76760933f4860cee1a01f55c9b0541e1acb20afdabb95673db5"
+      }
+    ],
+    "root": "0xe34934b1a170d76760933f4860cee1a01f55c9b0541e1acb20afdabb95673db5",
+    "rootAlgo": "keccak256-evidence-root-v1",
+    "bundleHash": "0x499bebb202d498c0709ff8f74ea2688936ba3569de77059cafcd7c526b1f8042",
+    "evidenceId": "evi_20251116_135339_e9ae2d4e",
+    "parentRoot": null
+  },
+  "perf": {
+    "okxRttMs": 3262,
+    "totalMs": 3362,
+    "cache": false,
+    "rateLimit": {
+      "remaining": 98,
+      "resetSec": 1
+    }
+  },
+  "error": null
+}

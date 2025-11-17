@@ -1,6 +1,6 @@
 // 验证服务V2路由 - 支持多种交易所的订单验证接口
 import express from 'express';
-import { dbManager } from '../database/db.js';
+import dbManager from '../database/db.js';
 import VerificationService from '../services/verificationService.js';
 import { VerifyRequest, VerifyResponse } from '../types/index.js';
 

@@ -26,6 +26,18 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
     duration: ''
   });
 
+  const normalizeSymbol = (input: string): string => {
+    const raw = String(input || '').trim();
+    if (!raw) return raw;
+    const low = raw.toLowerCase().replace(/\s+/g, '');
+    if (low === 'btuusdc') return 'BTCUSDC';
+    if (raw.includes('-')) {
+      const parts = raw.split('-').map(p => p.trim().toUpperCase()).filter(Boolean);
+      if (parts.length >= 2) return `${parts[0]}${parts[1]}`;
+    }
+    return raw.toUpperCase();
+  };
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
@@ -54,7 +66,7 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
         },
         body: JSON.stringify({
           product: formData.product,
-          symbol: formData.symbol,
+          symbol: normalizeSymbol(formData.symbol),
           amount: parseFloat(formData.amount),
           duration: parseInt(formData.duration)
         })
@@ -189,7 +201,7 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
                 <div className="mt-4 p-3 bg-stone-50 rounded text-xs font-mono break-all">
                   {buildLink(
                     formData.product,
-                    formData.symbol,
+                    normalizeSymbol(formData.symbol),
                     parseFloat(formData.amount),
                     parseInt(formData.duration)
                   )}

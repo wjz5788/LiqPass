@@ -22,6 +22,26 @@ export const Payment: React.FC = () => {
   const [uid, setUid] = useState<string>('');
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<any>(null);
+  const normalizeInstId = (input: string): string => {
+    const raw = String(input || '').trim();
+    if (!raw) return raw;
+    const low = raw.toLowerCase().replace(/\s+/g, '');
+    if (low === 'btuusdc') return 'BTC-USDC-SWAP';
+    if (raw.includes('-')) {
+      const parts = raw.split('-').map(p => p.trim().toUpperCase()).filter(Boolean);
+      if (parts.length === 2) return `${parts[0]}-${parts[1]}-SWAP`;
+      if (parts.length >= 3) return `${parts[0]}-${parts[1]}-${parts[2]}`;
+    }
+    if (low.endsWith('usdt')) {
+      const base = low.slice(0, low.length - 4).toUpperCase();
+      return `${base}-USDT-SWAP`;
+    }
+    if (low.endsWith('usdc')) {
+      const base = low.slice(0, low.length - 4).toUpperCase();
+      return `${base}-USDC-SWAP`;
+    }
+    return raw.toUpperCase();
+  };
 
   const handlePayment = async (wallet: WalletConnectionResult) => {
     setIsProcessing(true);
@@ -74,7 +94,7 @@ export const Payment: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ordId,
-          instId,
+          instId: normalizeInstId(instId),
           live: true,
           fresh: true,
           noCache: true,

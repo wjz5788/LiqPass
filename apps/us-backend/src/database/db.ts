@@ -19,9 +19,11 @@ export class DatabaseManager {
   private db: Database.Database | null = null;
   private dbPath: string;
   private initialized: Promise<void>;
+  public verifications: Map<string, any>;
 
   constructor(dbPath: string = './data/us-backend.db') {
     this.dbPath = dbPath;
+    this.verifications = new Map<string, any>();
     
     // 确保数据目录存在
     const dir = dirname(dbPath);

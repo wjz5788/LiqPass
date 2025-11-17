@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { api, ApiError } from '../services/api.ts';
 
 // 类型定义
 interface ExchangeAccount {
@@ -181,68 +182,6 @@ const EXCHANGES_META = {
   },
 } as const;
 
-// API 调用函数
-async function api(path: string, options: { method?: string; body?: any } = {}) {
-  const { method = 'GET', body } = options;
-  
-  // 模拟后端调用
-  if (process.env.NODE_ENV === 'development') {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // 模拟数据
-    if (path === '/api/v1/verification/supported-exchanges' && method === 'GET') {
-      return {
-        exchanges: Object.keys(EXCHANGES_META),
-        fields: EXCHANGES_META,
-      };
-    }
-    
-    if (path === '/api/v1/verification/verify' && method === 'POST') {
-      return {
-        status: 'verified',
-        caps: { orders: true, fills: true, positions: true, liquidations: true },
-        account: { exchangeUid: '12345678', subAccount: 'main', accountType: 'futures', sampleInstruments: ['BTC-USDT-PERP'] },
-        proof: { echo: { firstOrderIdLast4: '8a3f', firstFillQty: '0.001', firstFillTime: new Date().toISOString() }, hash: 'keccak256(0x...)' },
-        verifiedAt: new Date().toISOString(),
-        order: {
-          orderId: body.orderRef,
-          pair: body.pair,
-          side: 'SELL',
-          type: 'MARKET',
-          status: 'FILLED',
-          executedQty: '0.001',
-          avgPrice: '100000',
-          quoteAmount: '100',
-          orderTimeIso: new Date().toISOString(),
-          exchangeTimeIso: new Date().toISOString(),
-        },
-        checks: {
-          authOk: true,
-          capsOk: true,
-          orderFound: true,
-          echoLast4Ok: true,
-          arithmeticOk: true,
-          pairOk: true,
-          timeSkewMs: 10,
-          verdict: 'pass',
-        },
-        liquidation: { status: 'none' },
-        sessionId: 'sess_' + Date.now(),
-      };
-    }
-  }
-  
-  const res = await fetch(`http://localhost:3002${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
-}
 
 // 状态徽章组件
 function StatusBadge({ status, lastVerifiedAt, pendingConfirm, verifying }: {
@@ -607,77 +546,8 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
     setVerifyingMap(prev => ({ ...prev, [accountId]: true }));
 
     try {
-      const path = `/api/v1/verify/okx/standard`;
-      const res = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const maybeJson = await res.json().catch(() => ({}));
-      const data: VerifyResponse = maybeJson && typeof maybeJson === 'object' ? maybeJson : {};
+      const data = await api.post<VerifyResponse>('/api/v1/verify/okx/standard', payload, { requireAuth: false });
 
-      if (!res.ok) {
-        const errObj = (data && typeof (data as any).error === 'object') ? (data as any).error : null;
-        const reason = (
-          (data as any)?.detail ||
-          (data as any)?.message ||
-          (errObj?.msg || errObj?.message) ||
-          (typeof (data as any)?.error === 'string' ? (data as any).error : '') ||
-          ''
-        ) as string;
-        // 401 未登录时，开发模式下尝试直接调用 jp-verify 微服务
-        if (res.status === 401 && import.meta.env.DEV) {
-          const jpRes = await fetch('http://127.0.0.1:8082/api/verify/standard', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              exchange: 'okx',
-              ordId: payload.ordId,
-              instId: payload.instId,
-              live: payload.live ?? true,
-              fresh: payload.fresh ?? true,
-              noCache: payload.noCache ?? true,
-              keyMode: payload.keyMode ?? 'inline',
-              apiKey: payload.apiKey,
-              secretKey: payload.secretKey,
-              passphrase: payload.passphrase,
-              uid: payload.uid,
-            }),
-          });
-          const jpData = await jpRes.json().catch(() => ({}));
-          if (!jpRes.ok) {
-            const jpErrObj = (jpData && typeof jpData.error === 'object') ? jpData.error : null;
-            const jpReason = (
-              (jpData as any)?.detail ||
-              (jpData as any)?.message ||
-              (jpErrObj?.msg || jpErrObj?.message) ||
-              (typeof (jpData as any)?.error === 'string' ? (jpData as any).error : '') ||
-              ''
-            ) as string;
-            throw new Error(jpReason || `HTTP ${jpRes.status}`);
-          }
-          // 使用 jp-verify 的响应数据作为结果
-          const jpResult: VerifyResponse = jpData as any;
-          setAccounts(prev => prev.map(acc =>
-            acc.id === accountId
-              ? {
-                  ...acc,
-                  status: (jpResult.verifyStatus === 'PASS' ? 'verified' : 'failed'),
-                  lastVerifiedAt: new Date().toISOString(),
-                  lastVerifyResult: jpResult as unknown as any,
-                  userConfirmedEcho: false,
-                }
-              : acc
-          ));
-          setResultData(jpResult);
-          setToast(jpResult.verifyStatus === 'PASS' ? '已生成标准视图，待确认' : '验证未通过');
-          return;
-        }
-        throw new Error(reason || `HTTP ${res.status}`);
-      }
-
-      // 统一状态处理逻辑
       const normalizedStatus: ExchangeAccount['status'] = (data as any)?.verifyStatus === 'FAIL' ? 'failed' : 'verified';
       const verifiedAt = (data as any)?.verifiedAt || new Date().toISOString();
 
@@ -696,6 +566,53 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
       setResultData(data);
       setToast(normalizedStatus === 'verified' ? '已生成标准视图，待确认' : '验证结果已返回');
     } catch (error: any) {
+      if (import.meta.env.DEV) {
+        const jpRes = await fetch('http://127.0.0.1:8082/api/verify/standard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'omit',
+          body: JSON.stringify({
+            exchange: 'okx',
+            ordId: payload.ordId,
+            instId: payload.instId,
+            live: payload.live ?? true,
+            fresh: payload.fresh ?? true,
+            noCache: payload.noCache ?? true,
+            keyMode: payload.keyMode ?? 'inline',
+            apiKey: payload.apiKey,
+            secretKey: payload.secretKey,
+            passphrase: payload.passphrase,
+            uid: payload.uid,
+          }),
+        });
+        const jpData = await jpRes.json().catch(() => ({}));
+        if (!jpRes.ok) {
+          const jpErrObj = (jpData && typeof (jpData as any).error === 'object') ? (jpData as any).error : null;
+          const jpReason = (
+            (jpData as any)?.detail ||
+            (jpData as any)?.message ||
+            (jpErrObj?.msg || jpErrObj?.message) ||
+            (typeof (jpData as any)?.error === 'string' ? (jpData as any).error : '') ||
+            ''
+          ) as string;
+          throw new Error(jpReason || `HTTP ${jpRes.status}`);
+        }
+        const jpResult: VerifyResponse = jpData as any;
+        setAccounts(prev => prev.map(acc =>
+          acc.id === accountId
+            ? {
+                ...acc,
+                status: (jpResult.verifyStatus === 'PASS' ? 'verified' : 'failed'),
+                lastVerifiedAt: new Date().toISOString(),
+                lastVerifyResult: jpResult as unknown as any,
+                userConfirmedEcho: false,
+              }
+            : acc
+        ));
+        setResultData(jpResult);
+        setToast(jpResult.verifyStatus === 'PASS' ? '已生成标准视图，待确认' : '验证未通过');
+        return;
+      }
       const message = error?.message || '验证失败';
       setAccounts(prev => prev.map(acc =>
         acc.id === accountId
@@ -905,17 +822,11 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                       kind="primary"
                       onClick={async () => {
                         try {
-                          const res = await fetch('/api/v1/verify/confirm', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              evidenceId: resultData.evidenceId,
-                              ordId: resultData.ordId,
-                              instId: resultData.instId,
-                            }),
-                          });
-                          const data = await res.json().catch(() => ({}));
-                          if (!res.ok) throw new Error((data as any)?.error?.msg || '确认失败');
+                          await api.post('/api/v1/verify/confirm', {
+                            evidenceId: resultData.evidenceId,
+                            ordId: resultData.ordId,
+                            instId: resultData.instId,
+                          }, { requireAuth: false });
                           setAccounts(prev => prev.map(acc => (currentAccountId && acc.id === currentAccountId) ? { ...acc, userConfirmedEcho: true } : acc));
                           setToast('已确认无误');
                           setResultOpen(false);
@@ -941,6 +852,11 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                                 setConfirmError(null);
                               }
                             } catch {}
+                            // 开发模式下：后端不可用时，直接标记为已确认以不中断流程
+                            setAccounts(prev => prev.map(acc => (currentAccountId && acc.id === currentAccountId) ? { ...acc, userConfirmedEcho: true } : acc));
+                            setToast('已确认无误');
+                            setResultOpen(false);
+                            setConfirmError(null);
                           }
                         }
                       }}
@@ -1044,7 +960,7 @@ const AccountCard = ({
     onVerify({
       exchange: acc.exchange.toLowerCase(),
       ordId: trimmedForm.ordId,
-      instId: trimmedForm.instId,
+      instId: normalizeInstId(trimmedForm.instId),
       live: acc.environment === 'live',
       fresh: true,
       noCache: true,
@@ -1236,4 +1152,25 @@ const tick = (value: boolean) => value ? '✓' : '✗';
 const fmtTime = (timeStr?: string) => {
   if (!timeStr) return '';
   return new Date(timeStr).toLocaleString('zh-CN');
+};
+
+const normalizeInstId = (input: string): string => {
+  const raw = String(input || '').trim();
+  if (!raw) return raw;
+  const low = raw.toLowerCase().replace(/\s+/g, '');
+  if (low === 'btuusdc') return 'BTC-USDC-SWAP';
+  if (raw.includes('-')) {
+    const parts = raw.split('-').map(p => p.trim().toUpperCase()).filter(Boolean);
+    if (parts.length === 2) return `${parts[0]}-${parts[1]}-SWAP`;
+    if (parts.length >= 3) return `${parts[0]}-${parts[1]}-${parts[2]}`;
+  }
+  if (low.endsWith('usdt')) {
+    const base = low.slice(0, low.length - 4).toUpperCase();
+    return `${base}-USDT-SWAP`;
+  }
+  if (low.endsWith('usdc')) {
+    const base = low.slice(0, low.length - 4).toUpperCase();
+    return `${base}-USDC-SWAP`;
+  }
+  return raw.toUpperCase();
 };

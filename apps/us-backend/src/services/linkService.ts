@@ -18,19 +18,32 @@ export type CreateLinkInput = z.infer<typeof CreateLinkSchema>;
 export class LinkService {
   private links: Map<string, PaymentLink> = new Map();
 
+  private normalizeSymbol(input: string): string {
+    const raw = String(input || '').trim();
+    if (!raw) return raw;
+    const low = raw.toLowerCase().replace(/\s+/g, '');
+    if (low === 'btuusdc') return 'BTCUSDC';
+    if (raw.includes('-')) {
+      const parts = raw.split('-').map(p => p.trim().toUpperCase()).filter(Boolean);
+      if (parts.length >= 2) return `${parts[0]}${parts[1]}`;
+    }
+    return raw.toUpperCase();
+  }
+
   async createLink(input: CreateLinkInput): Promise<PaymentLink> {
     const data = CreateLinkSchema.parse(input);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + data.duration * 3600 * 1000);
+    const sym = this.normalizeSymbol(data.symbol);
 
     const link: PaymentLink = {
       id: uuidv4(),
       userId: data.userId ?? 'anonymous',
       product: data.product,
-      symbol: data.symbol,
+      symbol: sym,
       amount: Number(data.amount),
       duration: Number(data.duration),
-      url: this.buildPaymentUrl(data.product, data.symbol, Number(data.amount), Number(data.duration)),
+      url: this.buildPaymentUrl(data.product, sym, Number(data.amount), Number(data.duration)),
       status: 'pending',
       orderId: data.orderId ?? null,
       expiresAt: expiresAt.toISOString(),

@@ -45,10 +45,10 @@ const DEFAULT_CONFIG: RequestConfig = {
 
 // 获取认证token
 function getAuthToken(): string | null {
-  // 从localStorage获取JWT token或API key
+  const lpToken = localStorage.getItem('lp_auth_token');
   const token = localStorage.getItem('jwt_token');
   const apiKey = localStorage.getItem('api_key');
-  return token || apiKey;
+  return lpToken || token || apiKey;
 }
 
 // 创建请求头
@@ -185,6 +185,7 @@ class ApiService {
   private async request<T>(endpoint: string, config: RequestConfig): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     const finalConfig = { ...DEFAULT_CONFIG, ...config };
+    finalConfig.credentials = finalConfig.requireAuth ? 'include' : 'omit';
     
     // 创建请求头
     finalConfig.headers = createHeaders(finalConfig);
@@ -306,10 +307,12 @@ class ApiService {
   setAuthToken(token: string, type: 'jwt' | 'api_key' = 'jwt'): void {
     if (type === 'jwt') {
       localStorage.setItem('jwt_token', token);
+      localStorage.setItem('lp_auth_token', token);
       localStorage.removeItem('api_key');
     } else {
       localStorage.setItem('api_key', token);
       localStorage.removeItem('jwt_token');
+      localStorage.removeItem('lp_auth_token');
     }
   }
   
@@ -317,11 +320,12 @@ class ApiService {
   clearAuth(): void {
     localStorage.removeItem('jwt_token');
     localStorage.removeItem('api_key');
+    localStorage.removeItem('lp_auth_token');
   }
   
   // 检查是否已认证
   isAuthenticated(): boolean {
-    return !!(localStorage.getItem('jwt_token') || localStorage.getItem('api_key'));
+    return !!(localStorage.getItem('lp_auth_token') || localStorage.getItem('jwt_token') || localStorage.getItem('api_key'));
   }
 }
 

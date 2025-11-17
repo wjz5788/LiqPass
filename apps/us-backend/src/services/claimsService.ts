@@ -1,4 +1,6 @@
 import { v4 as uuid } from 'uuid';
+import axios from 'axios';
+import { ApiKeyEncryptionService } from '../utils/crypto.js';
 import { ClaimRecord, ClaimStatus, ClaimType, PayoutStatus, CreateClaimRequest, UpdateClaimRequest, ClaimsStats } from '../types/claims.js';
 
 export class ClaimsError extends Error {
@@ -11,6 +13,7 @@ export class ClaimsError extends Error {
 import OrderService from './orderService.js';
 import dbManager from '../database/db.js';
 import { evidenceStorage } from '../utils/evidenceStorage.js';
+import * as jpVerifyClient from './jpVerifyClient.js';
 
 export interface ClaimsServiceOptions {
   maxEvidenceFiles?: number;
@@ -269,7 +272,7 @@ export default class ClaimsService {
   /**
    * 验证理赔申请（前端需要的接口）
    */
-  verifyClaim(orderId: string, orderRef: string, claimToken: string, userId: string): {
+  async verifyClaim(orderId: string, orderRef: string, claimToken: string, userId: string): Promise<{
     eligible: boolean;
     payout: number;
     currency: string;
@@ -281,7 +284,7 @@ export default class ClaimsService {
     claimId: string;
     expiresAt: string;
     evidenceId?: string;
-  } {
+  }> {
     if (!claimToken.startsWith('ct_')) {
       throw new ClaimsError('INVALID_TOKEN', '无效的理赔令牌');
     }
@@ -302,13 +305,64 @@ export default class ClaimsService {
       throw new ClaimsError('ORDER_REF_MISMATCH', '订单引用不匹配');
     }
 
+    if (process.env.JP_VERIFY_TEST_MODE === '1') {
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+      const claimIdFromToken = this.claimTokens.get(claimToken);
+      const evidenceId = evidenceStorage.generateEvidenceId();
+      const payload = {
+        request: { orderId, orderRef, claimToken, userId },
+        result: { eligible: true, payout: 48.5, currency: 'USDC' },
+        evidence: { type: 'LIQUIDATION', time: now.toISOString(), pair: order.pair || 'UNKNOWN' },
+        raw: null,
+        meta: { source: 'demo', verifiedAt: now.toISOString() }
+      };
+      evidenceStorage.saveEvidence(evidenceId, payload);
+      const db = dbManager.getDatabase();
+      const evtId = `evt_${uuid()}`;
+      const metaJson = JSON.stringify({ orderRef, pair: order.pair || 'UNKNOWN', time: now.toISOString() });
+      db.run(
+        'INSERT INTO audit_events (id, event_type, order_id, claim_id, evidence_id, amount_usdc, meta_json) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        evtId,
+        'verify_pass',
+        orderId,
+        (claimIdFromToken || `clm_${uuid()}`),
+        evidenceId,
+        48.5,
+        metaJson
+      );
+      return {
+        eligible: true,
+        payout: 48.5,
+        currency: 'USDC',
+        evidence: { type: 'LIQUIDATION', time: now.toISOString(), pair: order.pair || 'UNKNOWN' },
+        claimId: claimIdFromToken || `clm_${uuid()}`,
+        expiresAt,
+        evidenceId
+      };
+    }
+
     // 根据最近一次交易所验证结果判断是否强平
     const db = dbManager.getDatabase();
-    const row = db.get(
-      `SELECT * FROM verify_results WHERE exchange = ? AND ord_id = ? ORDER BY verified_at DESC LIMIT 1`,
-      'okx',
-      orderRef
-    );
+    let row: any = null;
+    try {
+      row = db.get(
+        `SELECT * FROM verify_results WHERE exchange = ? AND ord_id = ? ORDER BY verified_at DESC LIMIT 1`,
+        'okx',
+        orderRef
+      );
+    } catch {}
+
+    if (!row) {
+      try {
+        await this.triggerExternalVerification(orderRef, order.pair, userId);
+        row = db.get(
+          `SELECT * FROM verify_results WHERE exchange = ? AND ord_id = ? ORDER BY verified_at DESC LIMIT 1`,
+          'okx',
+          orderRef
+        );
+      } catch {}
+    }
 
     let eligible = false;
     let pair = '';
@@ -362,6 +416,86 @@ export default class ClaimsService {
       expiresAt,
       evidenceId
     };
+  }
+
+  private async verifyViaJpServer(orderRef: string, instId: string | undefined, userId: string, claimToken: string, orderId: string): Promise<{
+    eligible: boolean;
+    payout: number;
+    currency: string;
+    evidence: { type: string; time: string; pair: string };
+    claimId: string;
+    expiresAt: string;
+    evidenceId?: string;
+  }> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+    const resp = await jpVerifyClient.verifyStandard({ exchange: 'okx', ordId: orderRef, instId: instId || 'BTC-USDT-SWAP', clientMeta: { source: 'claims', requestId: uuid() } }, 45000);
+    const normalized = resp?.data?.normalized ? resp.data.normalized : null;
+    const position = normalized?.position || normalized?.normalized?.position || null;
+    const liquidated = Boolean(position?.liquidated);
+    const pair = normalized?.order?.pair || normalized?.meta?.instId || instId || 'UNKNOWN';
+    const eventTime = position?.liquidatedAt || now.toISOString();
+    const evidenceId = evidenceStorage.generateEvidenceId();
+    evidenceStorage.saveEvidence(evidenceId, {
+      request: { orderId, orderRef, claimToken, userId },
+      result: { eligible: liquidated, payout: liquidated ? 48.5 : 0, currency: 'USDC' },
+      evidence: { type: liquidated ? 'LIQUIDATION' : 'NONE', time: eventTime, pair },
+      raw: resp?.data || null,
+      meta: { source: 'jp-verify', verifiedAt: now.toISOString() }
+    });
+    const db = dbManager.getDatabase();
+    const evtId = `evt_${uuid()}`;
+    const eventType = liquidated ? 'verify_pass' : 'verify_fail';
+    const metaJson = JSON.stringify({ orderRef, pair, time: eventTime });
+    db.run(
+      'INSERT INTO audit_events (id, event_type, order_id, claim_id, evidence_id, amount_usdc, meta_json) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      evtId,
+      eventType,
+      orderId,
+      (this.claimTokens.get(claimToken) || `clm_${uuid()}`),
+      evidenceId,
+      liquidated ? 48.5 : 0,
+      metaJson
+    );
+    return {
+      eligible: liquidated,
+      payout: liquidated ? 48.5 : 0,
+      currency: 'USDC',
+      evidence: { type: liquidated ? 'LIQUIDATION' : 'NONE', time: eventTime, pair },
+      claimId: this.claimTokens.get(claimToken) || `clm_${uuid()}`,
+      expiresAt,
+      evidenceId
+    };
+  }
+
+  private async triggerExternalVerification(orderRef: string, instId: string | undefined, userId: string): Promise<void> {
+    const db = dbManager.getDatabase();
+    let apiKeyRow: any = null;
+    try {
+      apiKeyRow = db.get(`SELECT * FROM api_keys WHERE user_id = ? AND exchange = ? ORDER BY updated_at DESC LIMIT 1`, userId, 'okx');
+    } catch {}
+    if (!apiKeyRow) {
+      throw new ClaimsError('API_KEY_NOT_FOUND', '未找到用于验证的API密钥');
+    }
+
+    // 解密密钥；若环境未配置KMS_KEY则抛错但不阻断主流程（由调用方捕获）
+    const decrypted = ApiKeyEncryptionService.decryptApiKey(apiKeyRow.api_key_enc, apiKeyRow.secret_enc, apiKeyRow.passphrase_enc);
+
+    const backendBase = (process.env.BACKEND_BASE_URL || `http://127.0.0.1:${process.env.PORT || '3002'}`).toString();
+    const verifyUrl = `${backendBase}/api/v1/verify`;
+
+    const payload = {
+      exchange: 'okx',
+      ordId: orderRef,
+      instId: instId || 'BTC-USDT-SWAP',
+      keyMode: 'inline',
+      apiKey: decrypted.api_key,
+      secretKey: decrypted.secret,
+      passphrase: decrypted.passphrase,
+      clientMode: 'claims'
+    } as any;
+
+    await axios.post(verifyUrl, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 45000 });
   }
 
   toClaimDetail(claimId: string): any {

@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { VerificationService } from '../services/verificationService.js';
-import { dbManager } from '../database/db.js';
+import dbManager from '../database/db.js';
 import { createApiKeyAuthMiddleware } from '../middleware/apiKeyAuth.js';
 import { ZodError } from 'zod';
-import { handleZodError } from '../middleware/validation.js';
-import { logger } from '../utils/logger.js';
+// 使用控制台日志代替应用级 logger，避免模块缺失导致启动失败
 
 export default function verificationRoutes(dbManager: typeof dbManager) {
   const router = Router();
@@ -83,13 +82,14 @@ export default function verificationRoutes(dbManager: typeof dbManager) {
       });
     } catch (error) {
       if (error instanceof ZodError) {
-        return handleZodError(error, res);
+        return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', issues: (error as any).issues });
       }
       
-      logger.error('Verification error:', error);
+      console.error('Verification error:', error);
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
+        message: (error instanceof Error ? error.message : String(error))
       });
     }
   });
@@ -157,13 +157,14 @@ export default function verificationRoutes(dbManager: typeof dbManager) {
       });
     } catch (error) {
       if (error instanceof ZodError) {
-        return handleZodError(error, res);
+        return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', issues: (error as any).issues });
       }
       
-      logger.error('Get verification result error:', error);
+      console.error('Get verification result error:', error);
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
+        message: (error instanceof Error ? error.message : String(error))
       });
     }
   });
@@ -247,13 +248,14 @@ export default function verificationRoutes(dbManager: typeof dbManager) {
       });
     } catch (error) {
       if (error instanceof ZodError) {
-        return handleZodError(error, res);
+        return res.status(400).json({ success: false, error: 'VALIDATION_ERROR', issues: (error as any).issues });
       }
       
-      logger.error('Get verification history error:', error);
+      console.error('Get verification history error:', error);
       res.status(500).json({
         success: false,
-        error: 'Internal server error'
+        error: 'Internal server error',
+        message: (error instanceof Error ? error.message : String(error))
       });
     }
   });

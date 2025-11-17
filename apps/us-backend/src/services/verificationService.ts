@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { dbManager } from '../database/db.js';
+import dbManager from '../database/db.js';
 import { VerificationResult, VerificationStatus } from '../types/index.js';
 
 export class VerificationService {
@@ -122,3 +122,5 @@ export class VerificationService {
     }));
   }
 }
+
+export default VerificationService;

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import requests
+import os
+import sys
 import hmac
 import base64
 import hashlib
@@ -11,9 +13,12 @@ from datetime import datetime, timezone
 # 🔑 用户配置
 # ==========================
 BASE_URL = "https://www.okx.com"
-API_KEY = '1e0ea9aa-e8a4-4217-a6dd-b5f0e7f313f6'
-API_SECRET = 'F9F45C90C94953FDACEBFE3697248B33'
-PASSPHRASE = 'S20250901zhao$'
+API_KEY = os.getenv('OKX_API_KEY')
+API_SECRET = os.getenv('OKX_SECRET_KEY')
+PASSPHRASE = os.getenv('OKX_PASSPHRASE')
+if not all([API_KEY, API_SECRET, PASSPHRASE]):
+    print("缺少环境变量: OKX_API_KEY/OKX_SECRET_KEY/OKX_PASSPHRASE")
+    sys.exit(1)
 
 # ==========================
 # 🕒 工具函数

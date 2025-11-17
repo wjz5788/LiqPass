@@ -13,6 +13,9 @@ import AuthService from '../services/authService.js';
 import authRoutes from './auth.js';
 import { createAuthMiddleware } from '../middleware/authMiddleware.js';
 import adminClaimsRouter from './adminClaims.js';
+import verificationRoutes from './verification.js';
+import verificationV2Routes from './verification-v2.js';
+import dbManager from '../database/db.js';
 
 export interface RouteDependencies {
   orderService: OrderService;
@@ -26,6 +29,8 @@ export default function registerRoutes(app: express.Application, deps: RouteDepe
   app.use('/api/v1', ordersRoutes(orderService));
   app.use('/api/v1/verify', okxVerifyRoutes);
   app.use('/api/v1/api-keys', apiKeysRoutes);
+  app.use('/api/v1', verificationRoutes(dbManager));
+  app.use('/api/v2/verify', verificationV2Routes(dbManager));
 
   // 认证服务与路由
   const authService = new AuthService();
