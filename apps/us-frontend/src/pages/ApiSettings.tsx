@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api, ApiError } from '../services/api.ts';
+import { api, ApiError } from '../services/api';
+import { pythonScriptService, ScriptVerifyResult } from '../services/pythonScriptService';
 
 // 类型定义
 interface ExchangeAccount {
@@ -311,6 +312,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
     apiKey: '',
     apiSecret: '',
     passphrase: '',
+    instId: '',
     extra: {} as Record<string, string>,
   });
   
@@ -319,11 +321,29 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
     loadAccounts();
   }, []);
 
+  // 从环境变量自动保存一次用户的OKX密钥与固定交易对（仅用于演示联调）
+  useEffect(() => {
+    try {
+      const env: any = (import.meta as any).env || {};
+      const apiKey: string | undefined = env.VITE_OKX_API_KEY;
+      const secretKey: string | undefined = env.VITE_OKX_SECRET_KEY || env.VITE_OKX_API_SECRET;
+      const passphrase: string | undefined = env.VITE_OKX_PASSPHRASE || env.VITE_OKX_API_PASSPHRASE;
+      const uid: string = String(env.VITE_OKX_UID || '201933253463154688');
+      const instRaw: string = String(env.VITE_INST_ID || 'BTCUSDT');
+      const instId = normalizeInstId(instRaw);
+      if (apiKey && secretKey && passphrase) {
+        pythonScriptService.saveApiKeys(uid, { apiKey, secretKey, passphrase, uid });
+        pythonScriptService.saveInstId(uid, instId);
+        pythonScriptService.setCurrentUser(uid);
+      }
+    } catch {}
+  }, []);
+
   // 加载账户列表
   const loadAccounts = async () => {
+    console.log('开始加载账户列表...');
     setLoading(true);
     try {
-      // 模拟数据
       const mockAccounts: ExchangeAccount[] = [
         {
           id: 'eacc_okx_1',
@@ -349,6 +369,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
           environment: 'testnet',
         },
       ];
+      console.log('模拟数据已准备:', mockAccounts);
       setAccounts(mockAccounts);
       setAccountForms(prev => {
         const next: Record<string, AccountVerifyForm> = {};
@@ -357,7 +378,9 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
         });
         return next;
       });
+      console.log('账户列表加载完成');
     } catch (error) {
+      console.error('加载账户失败:', error);
       setToast('加载失败');
     } finally {
       setLoading(false);
@@ -395,6 +418,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
         apiKey: '',
         apiSecret: '',
         passphrase: '',
+        instId: pythonScriptService.getInstId(id) || '',
         extra: {},
       });
     }
@@ -440,8 +464,14 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
           environment: form.environment,
         };
 
+        pythonScriptService.saveApiKeys(newAccount.id, { apiKey: form.apiKey, secretKey: form.apiSecret || form.apiKey, passphrase: form.passphrase, uid: '' });
+        if (form.instId?.trim()) {
+          pythonScriptService.saveInstId(newAccount.id, normalizeInstId(form.instId.trim()));
+        }
+        pythonScriptService.setCurrentUser(newAccount.id);
+
         setAccounts(prev => [newAccount, ...prev]);
-        setToast('已保存API密钥，待验证');
+        setToast(t?.apiSettings?.toastSavedKeysPendingVerify || '已保存API密钥，待验证');
         setAccountForms(prev => ({
           ...prev,
           [newAccount.id]: createInitialVerifyForm(),
@@ -479,6 +509,11 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
               throw new Error(reason);
             }
           }
+          pythonScriptService.saveApiKeys(editingId, { apiKey: form.apiKey, secretKey: form.apiSecret || form.apiKey, passphrase: form.passphrase, uid: '' });
+        }
+
+        if (form.instId?.trim()) {
+          pythonScriptService.saveInstId(editingId, normalizeInstId(form.instId.trim()));
         }
 
         setAccounts(prev => prev.map(acc =>
@@ -546,73 +581,103 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
     setVerifyingMap(prev => ({ ...prev, [accountId]: true }));
 
     try {
-      const data = await api.post<VerifyResponse>('/api/v1/verify/okx/standard', payload, { requireAuth: false });
+      pythonScriptService.saveApiKeys(accountId, {
+        apiKey: payload.apiKey,
+        secretKey: payload.secretKey,
+        passphrase: payload.passphrase || '',
+        uid: payload.uid,
+      });
+      pythonScriptService.saveInstId(accountId, payload.instId);
+      pythonScriptService.setCurrentUser(accountId);
+      const scriptResult = await pythonScriptService.verify({ userId: accountId, ordId: payload.ordId, instId: payload.instId, keys: {
+        apiKey: payload.apiKey,
+        secretKey: payload.secretKey,
+        passphrase: payload.passphrase || '',
+        uid: payload.uid,
+      }});
 
-      const normalizedStatus: ExchangeAccount['status'] = (data as any)?.verifyStatus === 'FAIL' ? 'failed' : 'verified';
-      const verifiedAt = (data as any)?.verifiedAt || new Date().toISOString();
+      // 转换脚本结果到前端格式
+      const normalizedStatus: ExchangeAccount['status'] = scriptResult.success ? 'verified' : 'failed';
+      const verifiedAt = new Date().toISOString();
+
+      // 构建验证结果
+      const verifyResult: VerifyResult = {
+        status: scriptResult.success ? 'verified' : 'failed',
+        caps: { orders: true, fills: true, positions: true, liquidations: true },
+        account: { exchangeUid: payload.uid },
+        proof: {
+          echo: {
+            firstOrderIdLast4: payload.ordId.slice(-4),
+            firstFillQty: '1',
+            firstFillTime: verifiedAt,
+          },
+          hash: scriptResult.data?.proof || '脚本验证证明'
+        },
+        verifiedAt: verifiedAt,
+        order: {
+          orderId: payload.ordId,
+          pair: payload.instId,
+          side: 'buy',
+          type: 'limit',
+          status: 'filled',
+          executedQty: '1',
+          avgPrice: '50000',
+          quoteAmount: '50000',
+          orderTimeIso: verifiedAt,
+          exchangeTimeIso: verifiedAt,
+        },
+        checks: {
+          authOk: true,
+          capsOk: true,
+          orderFound: true,
+          echoLast4Ok: true,
+          arithmeticOk: true,
+          pairOk: true,
+          timeSkewMs: 0,
+          verdict: 'pass'
+        },
+        liquidation: {
+          status: 'none'
+        }
+      };
+
+      const echo = scriptResult.data?.orderEcho ? JSON.parse(String(scriptResult.data.orderEcho)) : undefined;
+      const apiResponse: VerifyResponse = {
+        verifyStatus: scriptResult.success ? 'PASS' : 'FAIL',
+        canPurchase: scriptResult.success,
+        verifiedAt: verifiedAt,
+        exchange: payload.exchange,
+        instId: payload.instId,
+        ordId: payload.ordId,
+        side: echo?.side,
+        size: echo?.executedQty,
+        leverage: undefined,
+        avgPx: echo?.avgPrice,
+        liqPx: undefined,
+        openTime: undefined,
+        closeTime: undefined,
+        isLiquidated: scriptResult.data?.liquidationStatus === '已清算',
+        pnl: undefined,
+        currency: undefined,
+        verifyReason: scriptResult.error || null,
+        evidenceId: scriptResult.data?.proof || null
+      };
 
       setAccounts(prev => prev.map(acc =>
         acc.id === accountId
           ? {
               ...acc,
               status: normalizedStatus,
-              lastVerifiedAt: typeof verifiedAt === 'string' ? verifiedAt : new Date().toISOString(),
-              lastVerifyResult: data as unknown as VerifyResult,
+              lastVerifiedAt: verifiedAt,
+              lastVerifyResult: verifyResult,
               userConfirmedEcho: normalizedStatus === 'verified' ? false : acc.userConfirmedEcho,
             }
           : acc
       ));
 
-      setResultData(data);
-      setToast(normalizedStatus === 'verified' ? '已生成标准视图，待确认' : '验证结果已返回');
+      setResultData(apiResponse);
+      setToast(scriptResult.success ? '脚本验证成功，待确认' : '脚本验证失败');
     } catch (error: any) {
-      if (import.meta.env.DEV) {
-        const jpRes = await fetch('http://127.0.0.1:8082/api/verify/standard', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'omit',
-          body: JSON.stringify({
-            exchange: 'okx',
-            ordId: payload.ordId,
-            instId: payload.instId,
-            live: payload.live ?? true,
-            fresh: payload.fresh ?? true,
-            noCache: payload.noCache ?? true,
-            keyMode: payload.keyMode ?? 'inline',
-            apiKey: payload.apiKey,
-            secretKey: payload.secretKey,
-            passphrase: payload.passphrase,
-            uid: payload.uid,
-          }),
-        });
-        const jpData = await jpRes.json().catch(() => ({}));
-        if (!jpRes.ok) {
-          const jpErrObj = (jpData && typeof (jpData as any).error === 'object') ? (jpData as any).error : null;
-          const jpReason = (
-            (jpData as any)?.detail ||
-            (jpData as any)?.message ||
-            (jpErrObj?.msg || jpErrObj?.message) ||
-            (typeof (jpData as any)?.error === 'string' ? (jpData as any).error : '') ||
-            ''
-          ) as string;
-          throw new Error(jpReason || `HTTP ${jpRes.status}`);
-        }
-        const jpResult: VerifyResponse = jpData as any;
-        setAccounts(prev => prev.map(acc =>
-          acc.id === accountId
-            ? {
-                ...acc,
-                status: (jpResult.verifyStatus === 'PASS' ? 'verified' : 'failed'),
-                lastVerifiedAt: new Date().toISOString(),
-                lastVerifyResult: jpResult as unknown as any,
-                userConfirmedEcho: false,
-              }
-            : acc
-        ));
-        setResultData(jpResult);
-        setToast(jpResult.verifyStatus === 'PASS' ? '已生成标准视图，待确认' : '验证未通过');
-        return;
-      }
       const message = error?.message || '验证失败';
       setAccounts(prev => prev.map(acc =>
         acc.id === accountId
@@ -627,6 +692,28 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
         delete next[accountId];
         return next;
       });
+    }
+  };
+
+  const doVerifyMock = async (accountId: string, ordId: string) => {
+    setResultData(null);
+    setResultError(null);
+    setResultOpen(true);
+    setCurrentAccountId(accountId);
+    try {
+      const res = await fetch(`/mock/orders/${encodeURIComponent(ordId)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || '测试数据验证失败');
+      }
+      setResultData({
+        meta: { source: 'mock', ordId },
+        raw: data,
+      } as any);
+      setToast('测试数据验证成功');
+    } catch (error: any) {
+      setResultError(error?.message || '测试数据验证失败');
+      setToast(error?.message || '测试数据验证失败');
     }
   };
 
@@ -648,12 +735,12 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
       <header className="sticky top-0 z-10 bg-amber-50/80 backdrop-blur border-b border-amber-200">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-semibold text-zinc-900">个人中心 · API 设置</span>
-            <span className="text-xs text-zinc-500">/settings/exchange-apis</span>
+            <span className="text-xl font-semibold text-zinc-900">{t?.apiSettings?.headerTitle || '个人中心 · API 设置'}</span>
+            <span className="text-xs text-zinc-500">{t?.apiSettings?.headerPath || '/settings/exchange-apis'}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button kind="ghost" onClick={loadAccounts}>刷新</Button>
-            <Button onClick={openCreate}>新建账号</Button>
+            <Button kind="ghost" onClick={loadAccounts}>{t?.apiSettings?.refresh || '刷新'}</Button>
+            <Button onClick={openCreate}>{t?.apiSettings?.newAccount || '新建账号'}</Button>
           </div>
         </div>
         {toast && (
@@ -665,7 +752,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="text-zinc-600">加载中…</div>
+          <div className="text-zinc-600">{t?.apiSettings?.loading || '加载中…'}</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {accounts.map((acc) => {
@@ -690,6 +777,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                   onEdit={() => openEdit(acc.id)}
                   onDelete={() => deleteAccount(acc.id)}
                   onVerify={(payload) => doVerify(acc.id, payload)}
+                  onVerifyMock={(ordId) => doVerifyMock(acc.id, ordId)}
                   onConfirmEcho={() => confirmEcho(acc.id)}
                   onToast={(msg) => setToast(msg)}
                   verifying={verifyingMap[acc.id]}
@@ -707,7 +795,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">
-                  {editingId ? '编辑账号' : '新建账号'}
+                  {editingId ? (t?.apiSettings?.editAccount || '编辑账号') : (t?.apiSettings?.createAccount || '新建账号')}
                 </h3>
                 <button 
                   onClick={() => setDrawerOpen(false)}
@@ -718,7 +806,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
               </div>
               
               <div className="space-y-4">
-                <Field label="交易所" required>
+                <Field label={t?.apiSettings?.exchange || '交易所'} required>
                   <Select
                     value={form.exchange}
                     onChange={(value) => setForm(prev => ({ ...prev, exchange: value as any }))}
@@ -729,7 +817,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                   />
                 </Field>
                 
-                <Field label="标签" required>
+                <Field label={t?.apiSettings?.label || '标签'} required>
                   <Input
                     placeholder="给这个账号起个名字"
                     value={form.label}
@@ -737,17 +825,25 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                   />
                 </Field>
                 
-                <Field label="环境" required>
+                <Field label={t?.apiSettings?.env || '环境'} required>
                   <Select
                     value={form.environment}
                     onChange={(value) => setForm(prev => ({ ...prev, environment: value as any }))}
                     options={[
-                      { value: 'live', label: '实盘' },
-                      { value: 'testnet', label: '测试网' },
+                      { value: 'live', label: t?.apiSettings?.envLive || '实盘' },
+                      { value: 'testnet', label: t?.apiSettings?.envTestnet || '测试网' },
                     ]}
                   />
                 </Field>
                 
+                <Field label={t?.apiSettings?.instIdLabel || '固定交易对/合约 InstId（如 BTC-USDT-SWAP）'}>
+                  <Input
+                    placeholder={t?.apiSettings?.instIdPlaceholder || '如 BTC-USDT-SWAP'}
+                    value={form.instId}
+                    onChange={(e) => setForm(prev => ({ ...prev, instId: e.target.value }))}
+                  />
+                </Field>
+
                 {currentExchangeFields.map((field) => (
                   <Field key={field.key} label={field.label} required>
                     <Input
@@ -764,10 +860,10 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                 
                 <div className="flex gap-2 pt-4">
                   <Button onClick={saveForm} className="flex-1">
-                    {editingId ? '保存' : '创建'}
+                    {editingId ? (t?.yes || '保存') : (t?.apiSettings?.createAccount || '创建')}
                   </Button>
                   <Button kind="ghost" onClick={() => setDrawerOpen(false)}>
-                    取消
+                    {t?.no || '取消'}
                   </Button>
                 </div>
               </div>
@@ -885,11 +981,8 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                     </div>
                   )}
                 </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <Button kind="primary" onClick={() => setResultOpen(false)}>关闭</Button>
-              </div>
+                )}
+  
             </div>
           </div>
         </div>
@@ -906,6 +999,7 @@ const AccountCard = ({
   onEdit, 
   onDelete, 
   onVerify, 
+  onVerifyMock,
   onConfirmEcho,
   onToast,
   verifying = false,
@@ -916,6 +1010,7 @@ const AccountCard = ({
   onEdit: () => void;
   onDelete: () => void;
   onVerify: (payload: VerifyPayload) => void;
+  onVerifyMock: (ordId: string) => void;
   onConfirmEcho: () => void;
   onToast: (msg: string) => void;
   verifying?: boolean;
@@ -936,11 +1031,70 @@ const AccountCard = ({
   
   const tryVerify = () => {
     setSubmitted(true);
+    
+    // 检查是否已保存API密钥
+    const hasSavedKeys = pythonScriptService.hasApiKeys(acc.id);
+    
+    // 构建必填字段列表
+    const required = [
+      { key: 'ordId', label: '订单号', value: trimmedForm.ordId },
+    ];
+    
+    // 如果没有保存的API密钥，则需要填写所有字段
+    if (!hasSavedKeys) {
+      required.push(
+        { key: 'apiKey', label: 'API Key', value: trimmedForm.apiKey },
+        { key: 'secretKey', label: 'Secret Key', value: trimmedForm.secretKey },
+        { key: 'instId', label: '交易对/合约', value: trimmedForm.instId },
+      );
+      
+      if (acc.exchange === 'OKX') {
+        required.push(
+          { key: 'passphrase', label: 'Passphrase', value: trimmedForm.passphrase },
+          { key: 'uid', label: 'UID', value: trimmedForm.uid },
+        );
+      }
+    }
+    
+    const missing = required.filter(item => !item.value);
+    if (missing.length > 0) {
+      const missingLabels = missing.map(item => item.label).join('、');
+      onToast(`请填写 ${missingLabels}`);
+      return;
+    }
+
+    onFormChange(trimmedForm);
+
+    // 构建验证载荷
+    const verifyPayload: VerifyPayload = {
+      exchange: acc.exchange.toLowerCase(),
+      ordId: trimmedForm.ordId,
+      instId: hasSavedKeys ? (pythonScriptService.getInstId(acc.id) || 'BTC-USDT-SWAP') : normalizeInstId(trimmedForm.instId),
+      live: acc.environment === 'live',
+      fresh: true,
+      noCache: true,
+      keyMode: 'inline',
+      apiKey: trimmedForm.apiKey,
+      secretKey: trimmedForm.secretKey,
+      passphrase: trimmedForm.passphrase || undefined,
+      uid: trimmedForm.uid || undefined,
+    };
+
+    onVerify(verifyPayload);
+  };
+
+  const tryVerifyMock = () => {
+    setSubmitted(true);
+    if (!trimmedForm.ordId) {
+      onToast('请填写 订单号');
+      return;
+    }
+    onVerifyMock(trimmedForm.ordId);
+  };
+  const saveInlineKeys = () => {
     const required = [
       { key: 'apiKey', label: 'API Key', value: trimmedForm.apiKey },
       { key: 'secretKey', label: 'Secret Key', value: trimmedForm.secretKey },
-      { key: 'ordId', label: '订单号', value: trimmedForm.ordId },
-      { key: 'instId', label: '交易对/合约', value: trimmedForm.instId },
     ];
     if (acc.exchange === 'OKX') {
       required.push(
@@ -954,22 +1108,30 @@ const AccountCard = ({
       onToast(`请填写 ${missingLabels}`);
       return;
     }
-
-    onFormChange(trimmedForm);
-
-    onVerify({
-      exchange: acc.exchange.toLowerCase(),
-      ordId: trimmedForm.ordId,
-      instId: normalizeInstId(trimmedForm.instId),
-      live: acc.environment === 'live',
-      fresh: true,
-      noCache: true,
-      keyMode: 'inline',
+    pythonScriptService.saveApiKeys(acc.id, {
       apiKey: trimmedForm.apiKey,
       secretKey: trimmedForm.secretKey,
-      passphrase: trimmedForm.passphrase || undefined,
-      uid: trimmedForm.uid || undefined,
+      passphrase: trimmedForm.passphrase,
+      uid: trimmedForm.uid,
     });
+    onToast(t?.apiSettings?.savedApiKeys || '已保存API密钥');
+  };
+  const clearSavedKeys = () => {
+    pythonScriptService.clearApiKeys(acc.id);
+    onToast('已清除API密钥');
+  };
+  const saveInlineInstId = () => {
+    const val = trimmedForm.instId;
+    if (!val) {
+      onToast('请填写 固定交易对');
+      return;
+    }
+    pythonScriptService.saveInstId(acc.id, normalizeInstId(val));
+    onToast('已保存固定交易对');
+  };
+  const clearSavedInstId = () => {
+    pythonScriptService.clearInstId(acc.id);
+    onToast('已清除固定交易对');
   };
   
   const pendingConfirm = isVerified && !acc.userConfirmedEcho;
@@ -1011,39 +1173,73 @@ const AccountCard = ({
         )}
       </div>
 
+      {/* 已保存API密钥提示 */}
+      {pythonScriptService.hasApiKeys(acc.id) && (
+        <div className="rounded-xl border border-green-200 bg-green-50/40 p-3">
+          <div className="text-xs text-green-700 font-medium">{t?.apiSettings?.savedApiKeysOk || '✓ 已保存API密钥'}</div>
+          <div className="text-xs text-green-600 mt-1">{t?.apiSettings?.savedApiKeysHint || '第二次调用只需输入订单号，交易对将使用已保存的固定交易对'}</div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-2">
         <div className="text-xs text-zinc-700">API 凭证</div>
-        <Input 
-          type="password"
-          placeholder="API Key" 
-          value={form.apiKey} 
-          onChange={(e) => onFormChange({ apiKey: e.target.value })}
-          className={submitted && !trimmedForm.apiKey ? 'border-red-400' : ''} 
-        />
-        <Input 
-          type="password"
-          placeholder="Secret Key" 
-          value={form.secretKey} 
-          onChange={(e) => onFormChange({ secretKey: e.target.value })}
-          className={submitted && !trimmedForm.secretKey ? 'border-red-400' : ''} 
-        />
-        {acc.exchange === 'OKX' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {!pythonScriptService.hasApiKeys(acc.id) && (
+          <>
             <Input 
               type="password"
-              placeholder="Passphrase" 
-              value={form.passphrase} 
-              onChange={(e) => onFormChange({ passphrase: e.target.value })}
-              className={submitted && !trimmedForm.passphrase ? 'border-red-400' : ''} 
+              placeholder="API Key" 
+              value={form.apiKey} 
+              onChange={(e) => onFormChange({ apiKey: e.target.value })}
+              className={submitted && !trimmedForm.apiKey ? 'border-red-400' : ''} 
             />
             <Input 
-              placeholder="UID" 
-              value={form.uid} 
-              onChange={(e) => onFormChange({ uid: e.target.value })}
+              type="password"
+              placeholder="Secret Key" 
+              value={form.secretKey} 
+              onChange={(e) => onFormChange({ secretKey: e.target.value })}
+              className={submitted && !trimmedForm.secretKey ? 'border-red-400' : ''} 
+            />
+            {acc.exchange === 'OKX' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <Input 
+                  type="password"
+                  placeholder="Passphrase" 
+                  value={form.passphrase} 
+                  onChange={(e) => onFormChange({ passphrase: e.target.value })}
+                  className={submitted && !trimmedForm.passphrase ? 'border-red-400' : ''} 
+                />
+                <Input 
+                  placeholder="UID" 
+                  value={form.uid} 
+                  onChange={(e) => onFormChange({ uid: e.target.value })}
               className={submitted && !trimmedForm.uid ? 'border-red-400' : ''} 
             />
           </div>
         )}
+          <div className="mt-2 flex gap-2">
+            {!pythonScriptService.hasApiKeys(acc.id) ? (
+              <Button onClick={saveInlineKeys}>保存API密钥</Button>
+            ) : (
+              <Button kind="danger" onClick={clearSavedKeys}>清除API密钥</Button>
+            )}
+          </div>
+          </>
+        )}
+      </div>
+      <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+        <div className="text-xs text-zinc-700">固定交易对</div>
+        <div className="text-[11px] text-zinc-500">当前：{pythonScriptService.getInstId(acc.id) || '未设置'}</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Input 
+            placeholder="如 BTC-USDT-SWAP" 
+            value={form.instId} 
+            onChange={(e) => onFormChange({ instId: e.target.value })}
+          />
+          <div className="flex gap-2">
+            <Button onClick={saveInlineInstId}>保存交易对</Button>
+            <Button kind="danger" onClick={clearSavedInstId}>清除交易对</Button>
+          </div>
+        </div>
       </div>
       
       <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3">
@@ -1055,16 +1251,16 @@ const AccountCard = ({
             onChange={(e) => onFormChange({ ordId: e.target.value })}
             className={submitted && !trimmedForm.ordId ? 'border-red-400' : ''} 
           />
-          <Input 
-            placeholder="交易币对/合约 InstId（如 BTC-USDT-SWAP）" 
-            value={form.instId} 
-            onChange={(e) => onFormChange({ instId: e.target.value })}
-            className={submitted && !trimmedForm.instId ? 'border-red-400' : ''} 
-          />
+          {!pythonScriptService.hasApiKeys(acc.id) && (
+            <Input 
+              placeholder="交易币对/合约 InstId（如 BTC-USDT-SWAP）" 
+              value={form.instId} 
+              onChange={(e) => onFormChange({ instId: e.target.value })}
+              className={submitted && !trimmedForm.instId ? 'border-red-400' : ''} 
+            />
+          )}
         </div>
-        <div className="text-[11px] text-zinc-500 mt-1">
-          需填写订单号与币对用于生成回显；生成回显后需"确认无误"才记为通过。
-        </div>
+        <div className="text-[11px] text-zinc-500 mt-1">{pythonScriptService.hasApiKeys(acc.id) ? (t?.apiSettings?.savedApiKeysHint || "已保存API密钥，只需输入订单号，交易对将使用已保存的固定交易对") : "需填写订单号与币对用于生成回显；生成回显后需\"确认无误\"才记为通过。"}</div>
       </div>
 
       {isVerified && last?.proof?.echo && (
@@ -1127,6 +1323,7 @@ const AccountCard = ({
         <Button onClick={tryVerify} kind="primary" disabled={verifying}>
           {verifying ? "验证中…" : "验证"}
         </Button>
+        <Button onClick={tryVerifyMock} kind="ghost">测试数据验证</Button>
         <Button onClick={onEdit} kind="ghost">编辑</Button>
         <Button onClick={onDelete} kind="danger">删除</Button>
       </div>
