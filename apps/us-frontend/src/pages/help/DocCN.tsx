@@ -8,8 +8,8 @@ const CONTENT = `# 爆仓保 / LiqPass — 基金申请用帮助文档（中文�
 - 项目：LiqPass
 - 类别：On-chain liquidation insurance
 - 网络：Base Mainnet
-- 合约：\`0x9552b58d323993f84d01e3744f175f47a9462f94\`
-- 仓库：https://github.com/wjz5788/leverageguard-attestor
+- 合约：\`0xc423c34b57730ba87fb74b99180663913a345d68\`
+- 仓库：https://github.com/wjz5788/LiqPass
 - 官网：https://wjz5788.com
 - 联系方式：zmshyc@gmail.com
 

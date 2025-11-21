@@ -8,8 +8,8 @@ const CONTENT = `# LiqPass — Help Documentation for Base Ecosystem Fund (Engli
 - Project: LiqPass
 - Category: On-chain liquidation insurance
 - Network: Base Mainnet
-- Contract: \`0x9552b58d323993f84d01e3744f175f47a9462f94\`
-- Repository: https://github.com/wjz5788/leverageguard-attestor
+- Contract: \`0xc423c34b57730ba87fb74b99180663913a345d68\`
+- Repository: https://github.com/wjz5788/LiqPass
 - Website: https://wjz5788.com
 - Contact: zmshyc@gmail.com
 

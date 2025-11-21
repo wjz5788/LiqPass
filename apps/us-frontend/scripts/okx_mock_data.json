@@ -1,0 +1,49 @@
+
+{
+  "order_details": {
+    "code": "0",
+    "msg": "",
+    "data": [
+      {
+        "accFillSz": "0.01",
+        "avgPx": "70000",
+        "cTime": "1700000000000",
+        "category": "normal",
+        "ccy": "USDT",
+        "clOrdId": "test-order-123",
+        "fillTime": "1700000000000",
+        "instId": "BTC-USDT-SWAP",
+        "instType": "SWAP",
+        "lever": "10",
+        "ordId": "MOCK-ORDER-ID",
+        "ordType": "market",
+        "pnl": "0",
+        "posSide": "long",
+        "px": "70000",
+        "side": "buy",
+        "state": "filled",
+        "sz": "0.01",
+        "tdMode": "cross",
+        "uTime": "1700000000000"
+      }
+    ]
+  },
+  "fills_history": {
+    "code": "0",
+    "msg": "",
+    "data": [
+      {
+        "billId": "MOCK-BILL-ID",
+        "execType": "T",
+        "fillPx": "70000",
+        "fillSz": "0.01",
+        "fillTime": "1700000000000",
+        "instId": "BTC-USDT-SWAP",
+        "instType": "SWAP",
+        "ordId": "MOCK-ORDER-ID",
+        "side": "buy",
+        "tradeId": "MOCK-TRADE-ID"
+      }
+    ]
+  }
+}
