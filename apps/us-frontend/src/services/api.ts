@@ -3,8 +3,8 @@
  * 统一的API服务层，提供错误处理、认证、重试等功能
  */
 
-import { getEnv } from '../env.ts';
-import { toUSDC6d } from '../lib/usdcUtils.ts';
+import { getEnv } from '../env';
+import { toUSDC6d } from '../lib/usdcUtils';
 
 // API响应类型定义
 export interface ApiResponse<T = any> {

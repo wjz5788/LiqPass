@@ -5,12 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Dictionary } from '../types';
 import { buildLink } from '../utils';
-
-interface LandingProps {
-  t: Dictionary;
-}
 
 // 支付链接预览组件
 function PaymentLinkPreview({ url, onCopy }: { url: string; onCopy: () => void }) {
@@ -24,8 +19,8 @@ function PaymentLinkPreview({ url, onCopy }: { url: string; onCopy: () => void }
       <div className="mt-4 grid gap-6">
         <Card className="p-4">
           <div className="text-sm text-stone-500">SKU</div>
-          <div className="mt-1 text-base font-semibold">24h 当日爆仓保</div>
-          <div className="mt-1 text-sm text-stone-600">BTCUSDT · 固定赔付</div>
+          <div className="mt-1 text-base font-semibold">24h</div>
+          <div className="mt-1 text-sm text-stone-600">BTCUSDT</div>
           <div className="mt-3 text-2xl font-extrabold">20 USDC</div>
         </Card>
         
@@ -33,14 +28,14 @@ function PaymentLinkPreview({ url, onCopy }: { url: string; onCopy: () => void }
           <div className="break-all rounded-lg border border-stone-200 bg-stone-50 p-2 font-mono text-xs text-stone-700">
             {url}
           </div>
-          <Button onClick={onCopy}>复制</Button>
+          <Button onClick={onCopy}>复制 / Copy</Button>
         </div>
       </div>
     </Card>
   );
 }
 
-export const Landing: React.FC<LandingProps> = ({ t }) => {
+export const Landing: React.FC = () => {
   const { message, setMessage, address, onBase } = useWallet();
   const { push } = useToast();
   const [linkUrl, setLinkUrl] = useState("");
@@ -48,8 +43,8 @@ export const Landing: React.FC<LandingProps> = ({ t }) => {
   const createPaymentLink = () => {
     const url = buildLink("24h", "BTCUSDT", 20, 24);
     setLinkUrl(url);
-    setMessage(t.linkCreated);
-    push({ title: t.linkCreated });
+    setMessage("已创建支付链接 / Payment link created");
+    push({ title: "已创建支付链接 / Payment link created" });
   };
 
   const copyToClipboard = async () => {
@@ -68,27 +63,26 @@ export const Landing: React.FC<LandingProps> = ({ t }) => {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1 text-xs text-stone-600 shadow-sm">
             <span className="inline-block h-2 w-2 rounded-full bg-amber-600" />
-            {t.hero.badge}
+            订单保障 / Order Protection
           </div>
           
           <h1 className="mt-5 text-4xl font-extrabold tracking-tight sm:text-5xl">
-            {t.hero.title}
+            快速创建支付链接 / Create Payment Links Fast
           </h1>
           
           <p className="mt-4 max-w-xl text-stone-600">
-            {t.hero.subtitle}
+            面向交易者的 24h 爆仓保 · 一键生成支付链接，便于分享与下单。
           </p>
           
           <div className="mt-8 flex flex-wrap gap-3">
             <Button onClick={createPaymentLink}>
-              生成支付链接
+              创建支付链接 / Create Link
             </Button>
-            
             <Link 
               to="/links/create" 
               className="rounded-lg border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-900 hover:bg-stone-50 transition-colors"
             >
-              去高级创建
+              高级创建 / Advanced
             </Link>
           </div>
           
@@ -100,9 +94,9 @@ export const Landing: React.FC<LandingProps> = ({ t }) => {
           
           <div className="mt-4 text-xs text-stone-500">
             {address ? (
-              <span>已连接 · Base: {onBase ? "是" : "否"}</span>
+              <span>钱包已连接 / Wallet connected · Base: {onBase ? "是 / Yes" : "否 / No"}</span>
             ) : (
-              <span>未连接</span>
+              <span>钱包未连接 / Wallet not connected</span>
             )}
           </div>
         </div>
@@ -113,8 +107,8 @@ export const Landing: React.FC<LandingProps> = ({ t }) => {
         ) : (
           <Card>
             <div className="text-center text-stone-500 py-12">
-              <div className="text-lg font-medium mb-2">生成支付链接预览</div>
-              <div className="text-sm">点击左侧按钮开始创建</div>
+              <div className="text-lg font-medium mb-2">预览区 / Preview</div>
+              <div className="text-sm">点击“创建支付链接 / Create Link”生成预览</div>
             </div>
           </Card>
         )}

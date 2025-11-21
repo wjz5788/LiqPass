@@ -26,7 +26,7 @@ if (!skipValidation) {
   console.log('⚠️ 跳过支付环境变量校验');
 }
 
-const PORT: number = Number(process.env.PORT) || 3002;
+const PORT: number = Number(process.env.API_PORT) || 3002;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // 启动服务器

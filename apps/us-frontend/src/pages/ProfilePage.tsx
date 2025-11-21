@@ -2,15 +2,11 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useWallet } from '../contexts/WalletContext';
 
-interface ProfilePageProps {
-  t: (key: string) => string;
-}
-
-export const ProfilePage: React.FC<ProfilePageProps> = ({ t }) => {
+export const ProfilePage: React.FC = () => {
   const { address, connectWallet } = useWallet();
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">个人中心 (Profile)</h1>
+      <h1 className="text-2xl font-bold mb-6">个人资料 / Profile</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* 钱包设置卡片 */}
@@ -22,14 +18,14 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ t }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l9-5m-9 5v9" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold">钱包设置</h2>
+            <h2 className="text-lg font-semibold">设置 / Settings</h2>
           </div>
-          <p className="text-gray-600 text-sm mb-4">连接和管理您的加密钱包，用于支付和接收赔付。</p>
+          <p className="text-gray-600 text-sm mb-4">连接和管理您的加密钱包，用于支付和接收赔付 / Connect and manage your crypto wallet for payments and payouts.</p>
           <button 
             className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
             onClick={() => alert('钱包设置功能开发中')}
           >
-            连接钱包
+            连接钱包 / Connect Wallet
             <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
@@ -44,27 +40,27 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ t }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold">订单管理</h2>
+            <h2 className="text-lg font-semibold">订单管理 / Orders</h2>
           </div>
-          <p className="text-gray-600 text-sm mb-4">查看您的所有订单，管理保单状态，发起理赔申请。</p>
+          <p className="text-gray-600 text-sm mb-4">查看所有订单、管理保单状态、发起理赔申请 / View and manage orders, submit claims.</p>
           {address ? (
             <Link 
               to="/orders" 
               className="inline-flex items-center px-4 py-2 bg-blue-700 text-white rounded-lg hover:bg-blue-800 border border-blue-700 transition-colors text-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              查看订单
+              进入订单管理 / Go to Orders
               <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Link>
           ) : (
             <div className="text-center">
-              <p className="text-sm text-amber-600 mb-2">请先连接钱包</p>
+              <p className="text-sm text-amber-600 mb-2">请先连接钱包以访问账户功能 / Connect wallet to access account features</p>
               <button 
                 onClick={connectWallet}
                 className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
               >
-                连接钱包
+                连接钱包 / Connect Wallet
               </button>
             </div>
           )}
@@ -79,27 +75,27 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ t }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold">API设置</h2>
+            <h2 className="text-lg font-semibold">API 设置 / API Settings</h2>
           </div>
-          <p className="text-gray-600 text-sm mb-4">配置交易所API密钥，用于订单验证和理赔处理。</p>
+          <p className="text-gray-600 text-sm mb-4">配置交易所 API 密钥，用于订单验证和理赔处理 / Configure exchange API keys for verification and claims.</p>
           {address ? (
             <Link 
               to="/settings/api" 
               className="inline-flex items-center px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 border border-green-700 transition-colors text-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
             >
-              配置API
+              进入 API 设置 / Go to API Settings
               <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Link>
           ) : (
             <div className="text-center">
-              <p className="text-sm text-amber-600 mb-2">请先连接钱包</p>
+              <p className="text-sm text-amber-600 mb-2">请先连接钱包以访问账户功能 / Connect wallet to access account features</p>
               <button 
                 onClick={connectWallet}
                 className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
               >
-                连接钱包
+                连接钱包 / Connect Wallet
               </button>
             </div>
           )}
@@ -113,27 +109,27 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ t }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h2 className="text-lg font-semibold">赔付管理</h2>
+            <h2 className="text-lg font-semibold">赔付管理 / Claims</h2>
           </div>
-          <p className="text-gray-600 text-sm mb-4">查看赔付申请状态，管理理赔流程，跟踪赔付进度。</p>
+          <p className="text-gray-600 text-sm mb-4">查看赔付申请状态，管理理赔流程，跟踪赔付进度 / Manage claim requests and payout progress.</p>
           {address ? (
             <Link 
               to="/claims" 
               className="inline-flex items-center px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 border border-red-700 transition-colors text-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
             >
-              管理赔付
+              进入赔付管理 / Go to Claims
               <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Link>
           ) : (
             <div className="text-center">
-              <p className="text-sm text-amber-600 mb-2">请先连接钱包</p>
+              <p className="text-sm text-amber-600 mb-2">请先连接钱包以访问账户功能 / Connect wallet to access account features</p>
               <button 
                 onClick={connectWallet}
                 className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
               >
-                连接钱包
+                连接钱包 / Connect Wallet
               </button>
             </div>
           )}

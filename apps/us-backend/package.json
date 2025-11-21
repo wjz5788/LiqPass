@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/envCheck.mjs",
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "prestart": "node scripts/envCheck.mjs",
     "start": "node dist/server.js",
     "env:check": "node scripts/envCheck.mjs",

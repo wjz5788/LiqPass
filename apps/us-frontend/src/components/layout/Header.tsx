@@ -3,16 +3,25 @@ import { Link, NavLink } from 'react-router-dom';
 import { useWallet } from '../../contexts/WalletContext';
 import { MAIN_NAV } from '../../constants';
 import { WalletMenu } from '../WalletMenu';
+import { Dictionary } from '../../types';
 
 interface HeaderProps {
   lang: "zh" | "en";
   setLang: (lang: "zh" | "en") => void;
+  t: Dictionary;
 }
 
  
 
-export const Header: React.FC<HeaderProps> = ({ lang, setLang }) => {
+export const Header: React.FC<HeaderProps> = ({ lang, setLang, t }) => {
   const { address, busy, connectWallet, switchToBase, disconnectWallet } = useWallet();
+  const labelFor = (to: string) => {
+    if (to === '/products') return '产品 / Products';
+    if (to === '/verify') return '验证 / Verify';
+    if (to === '/transparency') return '透明度 / Transparency';
+    if (to === '/help') return '帮助 / Help';
+    return to;
+  };
 
   return (
     <header className="sticky top-0 z-20 border-b border-stone-200 bg-[#FFF7ED]/70 backdrop-blur">
@@ -21,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, setLang }) => {
           {/* Logo */}
           <Link 
             to="/" 
-            aria-label="返回首页" 
+            aria-label={'首页 / Home'} 
             className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           >
             <div className="h-6 w-6 rounded bg-amber-600" />
@@ -39,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, setLang }) => {
                   aria-disabled="true"
                   className="px-3 py-1 rounded-xl border border-stone-300 transition-colors text-stone-400 cursor-not-allowed opacity-60"
                 >
-                  {item.label}
+                  {t.nav.verify}
                 </button>
               ) : (
                 <NavLink
@@ -54,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, setLang }) => {
                   }
                   end
                 >
-                  {item.label}
+                  {labelFor(item.to)}
                 </NavLink>
               )
             ))}
@@ -81,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({ lang, setLang }) => {
                   : "bg-amber-600 text-white hover:bg-amber-500"
               } ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
             >
-              {address ? "切到 Base" : "连接钱包"}
+              {address ? t.wallet.switchNetwork : t.wallet.connect}
             </button>
 
             <WalletMenu address={address} onLogout={() => disconnectWallet?.()} />

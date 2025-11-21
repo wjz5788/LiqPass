@@ -63,6 +63,10 @@ export class ErrorBoundary extends Component<Props, State> {
     return `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  private generateErrorId(): string {
+    return ErrorBoundary.generateErrorId();
+  }
+
   private handleReset = () => {
     this.setState({
       hasError: false,

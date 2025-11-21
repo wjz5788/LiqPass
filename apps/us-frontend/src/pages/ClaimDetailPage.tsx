@@ -198,7 +198,7 @@ export default function ClaimDetailPage() {
               赔付列表
             </button>
             <button className="px-3 py-1.5 rounded-lg text-sm bg-white border border-gray-200 text-gray-900">
-              发起赔付
+              发起赔付 / Submit claim
             </button>
           </div>
         </div>

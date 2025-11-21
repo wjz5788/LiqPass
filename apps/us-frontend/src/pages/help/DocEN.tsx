@@ -1,101 +1,116 @@
 import React from 'react'
 
-const CONTENT = `LiqPass — Base Ecosystem Fund Application Document
-An insured gateway for retail leverage traders
+const CONTENT = `# LiqPass — Help Documentation for Base Ecosystem Fund (English Final)
+**An insured gateway for retail leverage traders**  
+**Base Ecosystem Fund Application Document**
 
-Project Information
-Project: LiqPass
-Category: On-chain liquidation insurance
-Network: Base Mainnet
-Contract: 0x9552b58d323993f84d01e3744f175f47a9462f94
-Repository: https://github.com/wjz5788/leverageguard-attestor
-Website: https://wjz5788.com
-Contact: zmshyc@gmail.com
+**Project Information**
+- Project: LiqPass
+- Category: On-chain liquidation insurance
+- Network: Base Mainnet
+- Contract: \`0x9552b58d323993f84d01e3744f175f47a9462f94\`
+- Repository: https://github.com/wjz5788/leverageguard-attestor
+- Website: https://wjz5788.com
+- Contact: zmshyc@gmail.com
 
-Project Overview
-LiqPass provides a secure entry point for retail traders engaging in high-leverage trading. Through its "premium-payout" mechanism, even risk-averse users can participate in derivative trading, thereby expanding on-chain transaction volumes, increasing fee revenue, and bringing new user groups to the Base ecosystem.
+---
 
-1. Why These Exchanges?
-We prioritize integration with centralized contract platforms with top-tier liquidity and trading volume (Binance, OKX, Bybit, etc.), as these platforms offer high market depth, standardized liquidation identification fields, and stable interfaces, facilitating standardized verification processes and reproducible results.
+## Project Overview
+**LiqPass** provides retail traders with an insured gateway to high-leverage trading. Through a premium–payout model, risk-averse users can safely enter derivatives markets, expanding on-chain trading volume, increasing transaction fees, and attracting new users to the Base ecosystem.
 
-According to statistics from multiple public data sources (CryptoRank, CoinMarketCap, CoinGecko, etc.) in the first half of 2025:
-Binance Futures has consistently ranked first globally in both contract trading volume and Open Interest indicators;
-OKX Futures and Bybit Futures remain in the second tier, with stable interfaces and consistent data structures.
+---
 
-Based on the above market structure, we have selected Binance / OKX / Bybit as our initial priority integration platforms to ensure data stability, interface compatibility, and international coverage for verification. The first version uses OKX as a verification sample, with subsequent integration of Binance and Gate.io.
+## 1. Why These Exchanges
+We integrate with **top centralized derivative exchanges** such as Binance, OKX, and Bybit. These exchanges have deep liquidity, standardized liquidation fields, and stable APIs—essential for standardized verification and reproducible results.
 
-Reference Sources:
-CryptoRank — Derivatives Exchanges Ranking
-CoinMarketCap — Derivatives Exchanges Rankings
-CoinGecko — Binance Futures Statistics
+According to public data (CryptoRank, CoinMarketCap, CoinGecko, 1H 2025):
+- **Binance Futures** ranks first globally by derivatives volume and open interest (OI);
+- **OKX Futures** and **Bybit Futures** follow in the second tier with consistent API formats and stable data structures.
 
-2. Why Would Users Bind Exchange Information?
-Core Purpose
-The sole purpose of binding is to verify the authenticity of liquidation events. When users submit a liquidation order number, the system verifies through read-only interfaces:
-whether the order actually exists;
-whether the time, underlying asset, leverage, settlement price, etc., match;
-whether it is indeed a liquidation (fields contain LIQUIDATION or ADL);
-whether the order belongs to the user本人而非伪造.
+Based on this structure, **Binance / OKX / Bybit** are our first integrations to ensure stability, compatibility, and global coverage. The initial prototype uses **OKX** as the verification sample, with **Binance** and **Gate.io** to follow.
 
-Security and Minimal Authorization
-A natural user typically owns multiple exchange accounts, but when using LiqPass, only one exchange needs to be bound;
-Authorization type is read-only permission (Read-Only), with no trading, withdrawal, or transfer capabilities;
-We recommend separating main accounts from high-leverage accounts to ensure fund security;
-For example:
-If a user primarily trades on OKX daily, it is recommended to bind a Binance account as a protection account;
-If primarily on Binance, binding OKX is recommended;
-If active on both, Gate.io or another backup exchange can be chosen.
-Users can open multiple high-leverage positions on their selected exchange without needing to bind multiple platforms;
-Data is only used when users file claims, with no continuous monitoring or background fetching.
+**References:**
+- CryptoRank — Derivatives Exchanges Ranking
+- CoinMarketCap — Derivatives Exchanges Rankings
+- CoinGecko — Binance Futures Statistics
 
-> In short: LiqPass operates on the logic of "minimum necessary authorization + account isolation," which can complete liquidation verification while maximizing the protection of user fund security.
+---
 
-3. Product and Claim Process
-Current Product
-Currently, only fixed-amount liquidation protection based on principal and leverage is offered. When purchasing, users input principal and leverage, and the system automatically calculates premiums and corresponding payout amounts.
+## 2. Why Users Connect Exchange Data
+### Core Purpose
+The sole purpose of connecting a read-only API is to **verify the authenticity of a liquidation event**. When a user submits an order ID, the system checks—via read-only API—whether it exists, matches the parameters (symbol, leverage, settlement), contains a liquidation flag (\`LIQUIDATION\` / \`ADL\`), and belongs to the user.
 
-Purchase Process (Overview)
-1. Connect wallet and log in;
-2. Select exchange and fill in read-only information;
-3. Input principal and leverage parameters;
-4. System calculates premium and payout amount;
-5. Policy takes effect after payment.
+### Security and Minimal Authorization
+- A user may hold multiple exchange accounts, but only **one** needs to be connected for LiqPass;
+- All access is **read-only**, with no trading, withdrawal, or transfer rights;
+- We recommend **separating the main account from high-leverage accounts** for safety;
+- Examples:
+  - If the main account trades on **OKX**, bind **Binance** as the insured account;
+  - If mainly on **Binance**, bind **OKX**;
+  - If active on both, use **Gate.io** or another small account.
+- Multiple high-leverage positions can be opened within the chosen exchange—no need to bind multiple platforms;
+- Data are accessed only when verifying claims—never continuously.
 
-Claim Process (Passive Mechanism)
-LiqPass implements a passive claim mechanism and does not actively monitor user transactions. After liquidation, users submit order numbers or JSON files, and the system checks order details against the policy locally. If information matches, a payout is initiated; if automatic checking fails, users can submit screenshots and explanations for manual review.
+> In short: LiqPass follows **“minimal authorization + account isolation”**, verifying truth while protecting user assets.
 
-Currently, a "local offline checking + summary on-chain" approach is adopted. Due to cloud servers located in the US with unstable access to OKX/Binance interfaces, only order summaries are generated into Merkle Roots and uploaded to the chain for public verification.
+---
 
-4. Data and Privacy
-User data is encrypted during front-end transmission and only stored in ciphertext;
-Complete transaction details are not retained, only verification summaries;
-After claim completion, summaries are generated into Merkle Roots and uploaded to the chain;
-Users can unbind and delete binding information at any time;
-On-chain records do not contain any personally identifiable information.
+## 3. Product and Claim Workflow
+### Current Product
+Fixed-payout protection based on trading principal and leverage multiplier. Premiums and payout limits are calculated automatically at purchase.
 
-5. Pricing and Risk Control Description
-Pricing Principle
-Premiums are calculated by the system based on a comprehensive model of risk probability, payout ceiling, and operating costs, ensuring the sustainability, fairness, and transparency of the fund pool in the long term.
+### Purchase Flow (Overview)
+1. Connect wallet (e.g., MetaMask);
+2. Select exchange and input read-only keys;
+3. Enter principal and leverage;
+4. System calculates premium and payout;
+5. Policy activates after payment.
 
-Risk Control and Anti-Fraud
-Setting waiting periods and payout ceilings to prevent arbitrage;
-Identifying abnormal accounts and repeated claims;
-Enabling blacklists and manual risk control switches.
+### Claim Process (Passive)
+LiqPass uses a **passive claim model**, without monitoring trades. After liquidation, the user submits an order ID or JSON; a local verification checks the order against the policy. If matched, payout is triggered; otherwise, screenshots or additional materials can be submitted for manual review.
 
-6. Contact Information
-Email: zmshyc@gmail.com
-Website: https://wjz5788.com
-Repository: https://github.com/wjz5788/LiqPass
-Base Mainnet Contract: 0xC423C34b57730Ba87FB74b99180663913a345D68
+Currently we use **offline local verification + Merkle-root attestation**. U.S.-based servers cannot reliably reach OKX/Binance APIs; only hashed summaries (Merkle Roots) are written on-chain for public auditability.
 
-This document is for the Base Ecosystem Fund application phase; the final launch version may be adjusted.`;
+---
+
+## 4. Data and Privacy
+- Client-side encryption; ciphertext-only storage;
+- No full trading history retained—only verification summaries;
+- Post-claim, a **Merkle Root** is committed on-chain;
+- Users can unbind and delete bindings at any time;
+- On-chain records contain no personally identifiable data.
+
+---
+
+## 5. Pricing and Risk Control
+### Pricing Principle
+Premiums are derived from an internal model combining **risk probability, payout limit, and operating cost**, ensuring sustainable, fair, and auditable reserves.
+
+### Risk and Anti-Fraud
+- Waiting periods and payout caps deter arbitrage;
+- Duplicate/anomalous accounts detection;
+- Blacklist and manual overrides safeguard the pool.
+
+---
+
+## 6. Contact
+- Email: zmshyc@gmail.com
+- Website: https://wjz5788.com
+- Repo:https://github.com/wjz5788/LiqPass
+- Base Mainnet Contract: \`0xC423C34b57730Ba87FB74b99180663913a345D68\`
+
+*This is the Base Ecosystem Fund application edition; production release may differ.*`;
 
 export default function DocEN() {
   return (
     <article className="mx-auto max-w-4xl rounded-2xl border bg-white/80 p-6 shadow-sm">
       <h2 className="text-2xl font-bold mb-4">English Document</h2>
       <div className="text-stone-800 leading-8 tracking-wide whitespace-pre-wrap">
-        {CONTENT}
+        {CONTENT
+          .replace(/\*\*/g, '')
+          .replace(/^##\s+/gm, '')
+          .replace(/^\-\s+/gm, '')
+          .replace(/---/g, '')}
       </div>
     </article>
   )

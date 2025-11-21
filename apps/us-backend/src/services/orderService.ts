@@ -185,7 +185,7 @@ export default class OrderService {
   }
 
   async listOrdersPersisted(): Promise<OrderRecord[]> {
-    const list = this.dbService.listOrders() as any[];
+    const list = await this.dbService.listOrders();
     return list.map((o) => ({
       id: o.id,
       skuId: o.skuId,

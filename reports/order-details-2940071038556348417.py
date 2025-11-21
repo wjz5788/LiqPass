@@ -7,17 +7,27 @@ import hmac
 import base64
 import hashlib
 import json
+import urllib.parse
 from datetime import datetime, timezone
 
 # ==========================
 # 🔑 用户配置
 # ==========================
-BASE_URL = "https://www.okx.com"
-API_KEY = os.getenv('OKX_API_KEY')
-API_SECRET = os.getenv('OKX_SECRET_KEY')
-PASSPHRASE = os.getenv('OKX_PASSPHRASE')
+BASE_URL = os.getenv('OKX_BASE_URL', "https://www.okx.com")
+
+def _get_env_first(names):
+    for n in names:
+        v = os.getenv(n)
+        if v:
+            return v
+    return None
+
+API_KEY = _get_env_first(['OKX_API_KEY', 'OKX_KEY'])
+API_SECRET = _get_env_first(['OKX_SECRET_KEY', 'OKX_API_SECRET', 'OKX_SECRET'])
+PASSPHRASE = _get_env_first(['OKX_PASSPHRASE', 'OKX_API_PASSPHRASE', 'OKX_PASS'])
+
 if not all([API_KEY, API_SECRET, PASSPHRASE]):
-    print("缺少环境变量: OKX_API_KEY/OKX_SECRET_KEY/OKX_PASSPHRASE")
+    print("缺少环境变量: OKX_API_KEY/OKX_SECRET_KEY/OKX_PASSPHRASE (兼容: OKX_KEY/OKX_API_SECRET/OKX_API_PASSPHRASE)")
     sys.exit(1)
 
 # ==========================
@@ -38,7 +48,7 @@ def okx_request(method, request_path, params=None, body=None):
     timestamp = get_iso_timestamp()
     query = ""
     if params:
-        query = "?" + "&".join([f"{k}={v}" for k, v in params.items()])
+        query = "?" + urllib.parse.urlencode(params, doseq=True, safe="-._~")
     full_path = request_path + query
     sign = okx_sign(timestamp, method, full_path, body or "", API_SECRET)
 
@@ -49,6 +59,10 @@ def okx_request(method, request_path, params=None, body=None):
         "OK-ACCESS-PASSPHRASE": PASSPHRASE,
         "Content-Type": "application/json",
     }
+
+    sim = os.getenv('OKX_SIMULATED')
+    if sim == '1':
+        headers["x-simulated-trading"] = "1"
 
     url = BASE_URL + full_path
     
@@ -280,8 +294,12 @@ def save_detailed_data(order_id, order_info, fills_analysis, risk_assessment, li
 # 🚀 主函数
 # ==========================
 def main():
-    order_id = "2940071038556348417"
-    inst_id = "BTC-USDT-SWAP"
+    env_order_id = os.getenv('ORDER_ID')
+    env_inst_id = os.getenv('INST_ID')
+    order_id = env_order_id or "2940071038556348417"
+    inst_id = env_inst_id or "BTC-USDT-SWAP"
+    if inst_id.upper() == "BTCUSDT":
+        inst_id = "BTC-USDT-SWAP"
     
     print("开始生成订单详细分析报告...")
     generate_detailed_report(order_id, inst_id)

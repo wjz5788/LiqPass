@@ -21,10 +21,12 @@ import ClaimsManage from './pages/ClaimsManage';
 import { ClaimsPage } from './pages/ClaimsPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import { zh } from './i18n/zh';
+import { en } from './i18n/en';
 import ClaimDetailPage from './pages/ClaimDetailPage';
 
 function App() {
   const [lang, setLang] = useState<'zh' | 'en'>('zh');
+  const t = lang === 'zh' ? zh : en;
 
   return (
     <Router basename={import.meta.env.BASE_URL}>
@@ -32,29 +34,31 @@ function App() {
         <ToastProvider>
           <ErrorBoundary>
             <div className="min-h-screen bg-[#FFF7ED] flex flex-col">
-              <Header lang={lang} setLang={setLang} />
+              <Header lang={lang} setLang={setLang} t={t} />
               
               <main className="flex-1">
                 <Routes>
-                  <Route path="/" element={<Landing t={zh} />} />
-                  <Route path="/links" element={<Links t={zh} />} />
-                  <Route path="/links/create" element={<CreateLink t={zh} />} />
-                  <Route path="/pay/:id" element={<Payment t={zh} />} />
-                  <Route path="/success" element={<Success t={zh} />} />
-                  <Route path="/profile" element={<ProfilePage t={zh} />} />
-                  <Route path="/settings/api" element={<ApiSettings t={zh} />} />
-                  <Route path="/orders" element={<OrdersPage t={zh} />} />
-                  <Route path="/orders/:id" element={<OrderDetailPage t={zh} />} />
+                  <Route path="/" element={<Landing />} />
+                  <Route path="/links" element={<Links />} />
+                  <Route path="/links/create" element={<CreateLink />} />
+                  <Route path="/pay/:id" element={<Payment />} />
+                  <Route path="/success" element={<Success />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/settings/api" element={<ApiSettings />} />
+                  <Route path="/orders" element={<OrdersPage />} />
+                  <Route path="/orders/:id" element={<OrderDetailPage />} />
                   <Route path="/account/orders" element={<Navigate to="/orders" replace />} />
                   <Route path="/claims" element={<ClaimsManage />} />
-                  <Route path="/claims/new" element={<ClaimsPage t={zh} />} />
+                  <Route path="/claims/new" element={<ClaimsPage />} />
                   <Route path="/claims/:claimId" element={<ClaimDetailPage />} />
                   <Route path="/account/claims" element={<Navigate to="/claims" replace />} />
                   <Route path="/account/claims/new" element={<Navigate to="/claims/new" replace />} />
-                  <Route path="/product/demo" element={<ProductDemo t={zh} />} />
-                  <Route path="/products" element={<Products t={zh} />} />
+                  <Route path="/product/demo" element={<ProductDemo />} />
+                  <Route path="/products" element={<Products />} />
                   <Route path="/transparency" element={<TransparencyPage />} />
-                  <Route path="/help" element={<Help t={zh} />} />
+                  <Route path="/help" element={<Help />} />
+                  <Route path="/help/en" element={<Help />} />
+                  <Route path="/help/10" element={<Help />} />
                 </Routes>
               </main>
               

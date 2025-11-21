@@ -174,7 +174,7 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
   const remainMs = Math.max(0, endMs - now);
   const isExpired = remainMs <= 0 || order.status === "expired";
 
-  const statusLabel = isExpired ? "已过期" : "生效中";
+  const statusLabel = isExpired ? "已过期 / Expired" : "生效中 / Active";
   const remainLabel = isExpired ? "T-00:00:00" : fmtRemain(remainMs);
   const runningLabel = isExpired ? "保障已结束" : `剩余 ${remainLabel}`;
 
@@ -203,7 +203,7 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
       {/* 顶部提示条：ID + 演示标记 */}
       <div className="w-full max-w-5xl mx-auto">
         <div className="rounded-xl border border-amber-100 bg-[#FFEDE5] px-4 py-2 text-xs text-amber-800 flex flex-wrap items-center gap-2">
-          <span className="font-medium">订单详情</span>
+          <span className="font-medium">订单详情 / Order Detail</span>
           <span className="truncate text-[11px] text-amber-900">ID: {order.id}</span>
           {isMock && (
             <span className="text-[11px] text-red-600">(演示数据，未找到本地订单)</span>
@@ -231,32 +231,32 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
                 <div className="text-base font-semibold">
                   ${order.payoutMax.toFixed(2)}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">最大赔付金额</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">最大赔付金额 / Max payout</div>
               </div>
             </div>
 
             {/* 指标行 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="rounded-2xl bg-slate-50 px-4 py-3 flex flex-col gap-1">
-                <div className="text-xs text-slate-500">本金</div>
+                <div className="text-xs text-slate-500">本金 / Principal</div>
                 <div className="text-base font-semibold text-slate-900">
                   ${order.principal.toFixed(2)}
                 </div>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3 flex flex-col gap-1">
-                <div className="text-xs text-slate-500">杠杆</div>
+                <div className="text-xs text-slate-500">杠杆 / Leverage</div>
                 <div className="text-base font-semibold text-slate-900">
                   {order.leverage}×
                 </div>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3 flex flex-col gap-1">
-                <div className="text-xs text-slate-500">已付保费</div>
+                <div className="text-xs text-slate-500">已付保费 / Premium paid</div>
                 <div className="text-base font-semibold text-slate-900">
                   ${order.premiumPaid.toFixed(2)}
                 </div>
               </div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3 flex flex-col gap-1">
-                <div className="text-xs text-slate-500">产品类型</div>
+                <div className="text-xs text-slate-500">产品类型 / SKU</div>
                 <div className="text-[13px] font-mono text-slate-900">
                   {order.skuId || "SKU_24H_FIX"}
                 </div>
@@ -275,36 +275,36 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
                     : "border-slate-100 text-slate-300 cursor-not-allowed"
                 }`}
               >
-                {txUrl ? "查看链上交易" : "暂无交易"}
+                {txUrl ? "查看链上交易 / View on explorer" : "暂无交易 / No tx"}
               </button>
               <button
                 type="button"
                 onClick={handleClaim}
                 className="inline-flex items-center justify-center rounded-full bg-rose-600 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-rose-700"
               >
-                发起理赔
+                发起理赔 / Submit claim
               </button>
             </div>
           </div>
 
           {/* 订单信息卡片（保单视角，不含交易所订单号） */}
           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 px-6 py-5 flex flex-col gap-4">
-            <div className="text-sm font-semibold text-slate-900">订单信息</div>
+            <div className="text-sm font-semibold text-slate-900">订单信息 / Order Info</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-xs text-slate-700">
               <div>
-                <div className="text-slate-400 mb-0.5">保单号</div>
+                <div className="text-slate-400 mb-0.5">保单号 / Policy ID</div>
                 <div>{order.id}</div>
               </div>
               <div>
-                <div className="text-slate-400 mb-0.5">交易所账户</div>
+                <div className="text-slate-400 mb-0.5">交易所账户 / Exchange account</div>
                 <div>{order.exchangeAccountId || "-"}</div>
               </div>
               <div>
-                <div className="text-slate-400 mb-0.5">创建时间</div>
+                <div className="text-slate-400 mb-0.5">创建时间 / Created at</div>
                 <div>{createdAtLabel}</div>
               </div>
               <div>
-                <div className="text-slate-400 mb-0.5">保障窗口</div>
+                <div className="text-slate-400 mb-0.5">保障窗口 / Coverage window</div>
                 <div>
                   {coverageFromLabel}
                   <span className="text-slate-400 mx-1">→</span>
@@ -313,7 +313,7 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
               </div>
               {/* 链上交易哈希：给你（运营 / 开发）看 */}
               <div className="md:col-span-2">
-                <div className="text-slate-400 mb-0.5">支付交易（链上哈希）</div>
+                <div className="text-slate-400 mb-0.5">支付交易（链上哈希） / Payment tx (hash)</div>
                 <div className="font-mono text-[11px] break-all leading-snug text-slate-800">
                   {order.txHash || "-"}
                 </div>
@@ -325,19 +325,19 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
         {/* 右侧：状态时间线 */}
         <div className="flex flex-col gap-4">
           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 px-5 py-4 flex flex-col gap-3">
-            <div className="text-sm font-semibold text-slate-900 mb-1">状态时间线</div>
+            <div className="text-sm font-semibold text-slate-900 mb-1">状态时间线 / Status Timeline</div>
             <div className="flex flex-col gap-3 text-xs">
               <div className="flex items-start gap-2">
                 <span className="mt-1 w-2 h-2 rounded-full bg-emerald-500" />
                 <div>
-                  <div className="text-slate-800">订单创建</div>
+                  <div className="text-slate-800">订单创建 / Order created</div>
                   <div className="text-[11px] text-slate-500">{createdAtLabel}</div>
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <span className="mt-1 w-2 h-2 rounded-full bg-sky-500" />
                 <div>
-                  <div className="text-slate-800">保障生效</div>
+                  <div className="text-slate-800">保障生效 / Coverage start</div>
                   <div className="text-[11px] text-slate-500">{coverageFromLabel}</div>
                 </div>
               </div>
@@ -345,7 +345,7 @@ const OrderDetailPage: React.FC<OrderDetailProps> = () => {
                 <span className="mt-1 w-2 h-2 rounded-full bg-amber-500" />
                 <div>
                   <div className="text-slate-800">
-                    {isExpired ? "保障结束" : "保障进行中"}
+                    {isExpired ? "保障结束 / Coverage ended" : "保障进行中 / Coverage running"}
                   </div>
                   <div className="text-[11px] text-slate-500">{runningLabel}</div>
                 </div>

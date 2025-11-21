@@ -50,16 +50,16 @@ const mockLinks: PaymentLink[] = [
   }
 ];
 
-export const Links: React.FC<LinksProps> = ({ t }) => {
+export const Links: React.FC = () => {
   const { address } = useWallet();
   const { push } = useToast();
   const [links] = useState<PaymentLink[]>(mockLinks);
 
   const handleCopyLink = (url: string) => {
     navigator.clipboard.writeText(url).then(() => {
-      push({ title: t.copied });
+      push({ title: '已复制链接 / Copied' });
     }).catch(() => {
-      push({ title: t.copyFailed, type: 'error' });
+      push({ title: '复制失败 / Copy failed', type: 'error' });
     });
   };
 
@@ -72,14 +72,14 @@ export const Links: React.FC<LinksProps> = ({ t }) => {
   };
 
   const breadcrumbItems = [
-    { label: t.home, to: '/' },
-    { label: t.links }
+    { label: '首页 / Home', to: '/' },
+    { label: '支付链接 / Links' }
   ];
 
   const columns = [
     {
       key: 'product',
-      header: '产品',
+      header: '产品 / Product',
       render: (link: PaymentLink) => (
         <div>
           <div className="font-medium">{link.product}</div>
@@ -89,53 +89,53 @@ export const Links: React.FC<LinksProps> = ({ t }) => {
     },
     {
       key: 'amount',
-      header: '金额',
+      header: '金额 / Amount',
       render: (link: PaymentLink) => (
         <div className="font-semibold">{link.amount} USDC</div>
       )
     },
     {
       key: 'duration',
-      header: '时长',
+      header: '时长 / Duration',
       render: (link: PaymentLink) => (
         <div>{link.duration} 小时</div>
       )
     },
     {
       key: 'status',
-      header: '状态',
+      header: '状态 / Status',
       render: (link: PaymentLink) => (
         <Badge 
           variant={link.status === 'active' ? 'success' : 'default'}
         >
-          {link.status === 'active' ? '活跃' : '停用'}
+          {link.status === 'active' ? '活跃 / Active' : '停用 / Inactive'}
         </Badge>
       )
     },
     {
       key: 'usage',
-      header: '使用次数',
+      header: '使用次数 / Usage',
       render: (link: PaymentLink) => (
         <div>{link.usageCount} 次</div>
       )
     },
     {
       key: 'actions',
-      header: '操作',
+      header: '操作 / Actions',
       render: (link: PaymentLink) => (
         <div className="flex gap-2">
           <Button 
             size="sm" 
             onClick={() => handleCopyLink(link.url)}
           >
-            复制
+            复制 / Copy
           </Button>
           <Button 
             size="sm" 
             variant="outline"
             onClick={() => handleToggleStatus(link.id, link.status)}
           >
-            {link.status === 'active' ? '停用' : '激活'}
+            {link.status === 'active' ? '停用 / Disable' : '激活 / Activate'}
           </Button>
         </div>
       )
@@ -148,13 +148,13 @@ export const Links: React.FC<LinksProps> = ({ t }) => {
         <Breadcrumb items={breadcrumbItems} />
         
         <Card className="mt-8 p-8 text-center">
-          <div className="text-lg font-semibold mb-2">请连接钱包</div>
-          <div className="text-stone-600 mb-4">连接钱包后查看您的支付链接</div>
+          <div className="text-lg font-semibold mb-2">请连接钱包 / Connect Wallet</div>
+          <div className="text-stone-600 mb-4">连接钱包后查看您的支付链接 / Connect wallet to view your payment links</div>
           <Link 
             to="/" 
             className="inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition-colors"
           >
-            返回首页
+            返回首页 / Back to Home
           </Link>
         </Card>
       </div>
@@ -167,15 +167,15 @@ export const Links: React.FC<LinksProps> = ({ t }) => {
       
       <div className="mt-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{t.links}</h1>
-          <p className="mt-2 text-stone-600">管理您的支付链接</p>
+          <h1 className="text-3xl font-bold">支付链接 / Links</h1>
+          <p className="mt-2 text-stone-600">管理您的支付链接 / Manage your payment links</p>
         </div>
         
         <Link 
           to="/links/create"
           className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition-colors"
         >
-          创建新链接
+          创建新链接 / Create Link
         </Link>
       </div>
 
@@ -188,13 +188,13 @@ export const Links: React.FC<LinksProps> = ({ t }) => {
           />
         ) : (
           <Card className="p-8 text-center">
-            <div className="text-lg font-semibold mb-2">暂无支付链接</div>
-            <div className="text-stone-600 mb-4">创建您的第一个支付链接</div>
+            <div className="text-lg font-semibold mb-2">暂无支付链接 / No links yet</div>
+            <div className="text-stone-600 mb-4">创建您的第一个支付链接 / Create your first payment link</div>
             <Link 
               to="/links/create"
               className="inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition-colors"
             >
-              创建链接
+              创建链接 / Create Link
             </Link>
           </Card>
         )}

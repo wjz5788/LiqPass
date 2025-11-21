@@ -286,7 +286,7 @@ function Select({ value, onChange, options, disabled }: {
 }
 
 // API 设置页面主组件
-export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => {
+export const ApiSettings: React.FC = () => {
   const [accounts, setAccounts] = useState<ExchangeAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState('');
@@ -471,7 +471,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
         pythonScriptService.setCurrentUser(newAccount.id);
 
         setAccounts(prev => [newAccount, ...prev]);
-        setToast(t?.apiSettings?.toastSavedKeysPendingVerify || '已保存API密钥，待验证');
+        setToast('已保存 API 密钥，待验证 / Saved API keys, pending verification');
         setAccountForms(prev => ({
           ...prev,
           [newAccount.id]: createInitialVerifyForm(),
@@ -735,12 +735,12 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
       <header className="sticky top-0 z-10 bg-amber-50/80 backdrop-blur border-b border-amber-200">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-semibold text-zinc-900">{t?.apiSettings?.headerTitle || '个人中心 · API 设置'}</span>
-            <span className="text-xs text-zinc-500">{t?.apiSettings?.headerPath || '/settings/exchange-apis'}</span>
+            <span className="text-xl font-semibold text-zinc-900">个人中心 · API 设置 / Profile · API Settings</span>
+            <span className="text-xs text-zinc-500">/settings/exchange-apis</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button kind="ghost" onClick={loadAccounts}>{t?.apiSettings?.refresh || '刷新'}</Button>
-            <Button onClick={openCreate}>{t?.apiSettings?.newAccount || '新建账号'}</Button>
+            <Button kind="ghost" onClick={loadAccounts}>刷新 / Refresh</Button>
+            <Button onClick={openCreate}>新建账号 / New Account</Button>
           </div>
         </div>
         {toast && (
@@ -752,7 +752,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="text-zinc-600">{t?.apiSettings?.loading || '加载中…'}</div>
+          <div className="text-zinc-600">加载中… / Loading…</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {accounts.map((acc) => {
@@ -795,7 +795,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">
-                  {editingId ? (t?.apiSettings?.editAccount || '编辑账号') : (t?.apiSettings?.createAccount || '新建账号')}
+                  {editingId ? '编辑账号 / Edit Account' : '新建账号 / Create Account'}
                 </h3>
                 <button 
                   onClick={() => setDrawerOpen(false)}
@@ -806,7 +806,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
               </div>
               
               <div className="space-y-4">
-                <Field label={t?.apiSettings?.exchange || '交易所'} required>
+                <Field label={'交易所 / Exchange'} required>
                   <Select
                     value={form.exchange}
                     onChange={(value) => setForm(prev => ({ ...prev, exchange: value as any }))}
@@ -817,7 +817,7 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                   />
                 </Field>
                 
-                <Field label={t?.apiSettings?.label || '标签'} required>
+                <Field label={'标签 / Label'} required>
                   <Input
                     placeholder="给这个账号起个名字"
                     value={form.label}
@@ -825,20 +825,20 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                   />
                 </Field>
                 
-                <Field label={t?.apiSettings?.env || '环境'} required>
+                <Field label={'环境 / Environment'} required>
                   <Select
                     value={form.environment}
                     onChange={(value) => setForm(prev => ({ ...prev, environment: value as any }))}
                     options={[
-                      { value: 'live', label: t?.apiSettings?.envLive || '实盘' },
-                      { value: 'testnet', label: t?.apiSettings?.envTestnet || '测试网' },
+                      { value: 'live', label: '实盘 / Live' },
+                      { value: 'testnet', label: '测试网 / Testnet' },
                     ]}
                   />
                 </Field>
                 
-                <Field label={t?.apiSettings?.instIdLabel || '固定交易对/合约 InstId（如 BTC-USDT-SWAP）'}>
+                <Field label={'固定交易对/合约 InstId（如 BTC-USDT-SWAP） / Fixed InstId'}>
                   <Input
-                    placeholder={t?.apiSettings?.instIdPlaceholder || '如 BTC-USDT-SWAP'}
+                    placeholder={'如 BTC-USDT-SWAP / e.g., BTC-USDT-SWAP'}
                     value={form.instId}
                     onChange={(e) => setForm(prev => ({ ...prev, instId: e.target.value }))}
                   />
@@ -860,10 +860,10 @@ export const ApiSettings: React.FC<{ t: (key: string) => string }> = ({ t }) => 
                 
                 <div className="flex gap-2 pt-4">
                   <Button onClick={saveForm} className="flex-1">
-                    {editingId ? (t?.yes || '保存') : (t?.apiSettings?.createAccount || '创建')}
+                    {editingId ? '保存 / Save' : '创建 / Create'}
                   </Button>
                   <Button kind="ghost" onClick={() => setDrawerOpen(false)}>
-                    {t?.no || '取消'}
+                    取消 / Cancel
                   </Button>
                 </div>
               </div>
@@ -1114,7 +1114,7 @@ const AccountCard = ({
       passphrase: trimmedForm.passphrase,
       uid: trimmedForm.uid,
     });
-    onToast(t?.apiSettings?.savedApiKeys || '已保存API密钥');
+    onToast('已保存 API 密钥 / Saved API keys');
   };
   const clearSavedKeys = () => {
     pythonScriptService.clearApiKeys(acc.id);
@@ -1176,8 +1176,8 @@ const AccountCard = ({
       {/* 已保存API密钥提示 */}
       {pythonScriptService.hasApiKeys(acc.id) && (
         <div className="rounded-xl border border-green-200 bg-green-50/40 p-3">
-          <div className="text-xs text-green-700 font-medium">{t?.apiSettings?.savedApiKeysOk || '✓ 已保存API密钥'}</div>
-          <div className="text-xs text-green-600 mt-1">{t?.apiSettings?.savedApiKeysHint || '第二次调用只需输入订单号，交易对将使用已保存的固定交易对'}</div>
+          <div className="text-xs text-green-700 font-medium">✓ 已保存 API 密钥 / Saved API keys</div>
+          <div className="text-xs text-green-600 mt-1">第二次调用只需输入订单号，交易对将使用已保存的固定交易对 / Enter orderRef only on subsequent calls; instId uses saved value</div>
         </div>
       )}
 
@@ -1260,7 +1260,7 @@ const AccountCard = ({
             />
           )}
         </div>
-        <div className="text-[11px] text-zinc-500 mt-1">{pythonScriptService.hasApiKeys(acc.id) ? (t?.apiSettings?.savedApiKeysHint || "已保存API密钥，只需输入订单号，交易对将使用已保存的固定交易对") : "需填写订单号与币对用于生成回显；生成回显后需\"确认无误\"才记为通过。"}</div>
+        <div className="text-[11px] text-zinc-500 mt-1">{pythonScriptService.hasApiKeys(acc.id) ? "已保存 API 密钥，只需输入订单号，交易对将使用已保存的固定交易对 / Saved API keys: enter orderRef only; instId uses saved value" : "需填写订单号与币对用于生成回显；生成回显后需\"确认无误\"才记为通过 / Fill orderRef and pair to generate echo; confirm correctness to pass."}</div>
       </div>
 
       {isVerified && last?.proof?.echo && (

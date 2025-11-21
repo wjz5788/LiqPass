@@ -19,6 +19,7 @@ export interface VerifyParams {
   orderRef: string;
   pair: string;
   extra?: Record<string, any>;
+  uid?: string;
 }
 
 // 原始交易所API响应类型（示例）
@@ -78,7 +79,7 @@ export function parseTime(timeStr: string | number): Date {
 export function mapOrderStatus(status: string): string {
   const statusMap: Record<string, string> = {
     'canceled': 'CANCELED',
-    'partially_filled': 'PARTIALLY_FILLED', 
+    'partially_filled': 'PARTIALLY_FILLED',
     'filled': 'FILLED',
     'new': 'NEW',
     'open': 'OPEN',

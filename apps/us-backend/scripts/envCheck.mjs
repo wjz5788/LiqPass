@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // 运行前关键环境变量闸口（dev/prod 均生效）
 
+import { config } from 'dotenv';
+
+// 加载环境变量文件
+config({ path: '.env.local' });
+
 const errors = [];
 const warnings = [];
 

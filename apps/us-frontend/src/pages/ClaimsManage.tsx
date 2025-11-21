@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { authFetchJson } from "../lib/authFetch";
 import { getAuthAddress } from "../lib/auth";
+import { pythonScriptService, ScriptVerifyResult } from "../services/pythonScriptService";
 
 type ClaimStatus = "PENDING" | "VERIFIED" | "PAID";
 
@@ -30,6 +31,8 @@ interface VerifyResult {
   evidenceId: string | null;
   readyForPayoutAt: string | null;
   payoutSuggest?: number | null;
+  orderRaw?: any;
+  fills?: any[];
 }
 
 function formatCountdown(seconds: number) {
@@ -128,6 +131,7 @@ export default function ClaimsManagePage() {
     setOrderRefInput(order.orderRef || "");
     setVerifyResult(null);
     setError(null);
+    try { if (order.latestAccount) pythonScriptService.setCurrentUser(order.latestAccount); } catch {}
   };
 
   const handleVerify = async () => {
@@ -135,41 +139,52 @@ export default function ClaimsManagePage() {
     setLoading(true);
     setError(null);
     try {
-      const prepareResp = await authFetchJson<any>("/api/v1/claims/prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: expandedOrderId }),
-      });
-      const claimId = String(prepareResp?.claimId || "").trim();
-      if (!claimId) throw new Error("后端未返回 claimId");
-
-      const data = await authFetchJson<any>("/api/v1/claims/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claimId, orderRef: orderRefInput.trim() }),
-      });
-
+      const ordId = orderRefInput.trim();
+      const res = await fetch(`/mock/orders/${encodeURIComponent(ordId)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || '验证失败');
+      }
+      const info = data?.order_info || {};
+      const fills = Array.isArray(data?.fills_analysis) ? data.fills_analysis : [];
+      const liqs = Array.isArray(data?.liquidations) ? data.liquidations : [];
+      const risk = data?.risk_assessment || {};
+      const symbol = info['交易对'] || null;
+      const side = info['方向'] || null;
+      const sizeStr = info['成交数量'] || info['订单数量'] || null;
+      const sizeNum = typeof sizeStr === 'string' ? Number(sizeStr) : (typeof sizeStr === 'number' ? sizeStr : null);
+      const isLiq = (Array.isArray(liqs) && liqs.length > 0) || Boolean(risk['是否有强平风险']);
+      const liqTime = Array.isArray(liqs) && liqs[0]?.['时间'] ? new Date(liqs[0]['时间']).toISOString() : null;
+      const mappedFills = fills.map((f: any) => ({
+        ts: f['时间'] ? new Date(f['时间']).getTime() : undefined,
+        side: f['方向'] || undefined,
+        fillPx: f['价格'] || undefined,
+        fillSz: f['数量'] || undefined,
+        fillPnl: f['盈亏'] || undefined,
+        fee: f['手续费'] || undefined,
+        tradeId: f['成交ID'] || undefined,
+      }));
       const result: VerifyResult = {
-        orderRef: String(data.orderRef || orderRefInput.trim()),
-        exchange: data.exchange ?? null,
-        symbol: data.symbol ?? null,
-        side: data.side ?? null,
-        size: data.size ?? null,
-        isLiquidated: Boolean(data.isLiquidated ?? false),
-        pnl: data.pnl ?? null,
-        liquidationTime: data.liquidationTime ?? null,
-        evidenceId: data.evidenceId ?? null,
-        readyForPayoutAt: data.payoutEligibleAt ?? null,
-        payoutSuggest: data.payoutSuggest ?? null,
+        orderRef: ordId,
+        exchange: 'OKX',
+        symbol,
+        side,
+        size: Number.isFinite(sizeNum) ? sizeNum : null,
+        isLiquidated: isLiq,
+        pnl: typeof risk['累计盈亏'] === 'number' ? risk['累计盈亏'] : null,
+        liquidationTime: liqTime,
+        evidenceId: null,
+        readyForPayoutAt: isLiq ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null,
+        payoutSuggest: isLiq ? Number((risk['强平损失'] ?? 0)) : null,
+        orderRaw: data,
+        fills: mappedFills,
       };
-
       setVerifyResult(result);
-
       if (result.isLiquidated) {
-        setOrders((prev) => prev.map((o) => (o.id === expandedOrderId ? { ...o, status: "VERIFIED" } : o)));
+        setOrders((prev) => prev.map((o) => (o.id === expandedOrderId ? { ...o, status: 'VERIFIED' } : o)));
       }
     } catch (e: any) {
-      setError(e?.message || "验证失败");
+      setError(e?.message || '验证失败');
     } finally {
       setLoading(false);
     }
@@ -228,15 +243,15 @@ export default function ClaimsManagePage() {
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-7 h-7 rounded-xl bg-yellow-400 border border-gray-100" />
-            <div className="font-semibold">赔付管理</div>
-            <div className="text-sm text-gray-500">倒序 · 共 {orders.length} 笔</div>
+            <div className="font-semibold">赔付管理 / Claims</div>
+            <div className="text-sm text-gray-500">倒序 · 共 {orders.length} 笔 / Desc · {orders.length} items</div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={refresh}
               className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
             >
-              刷新
+              刷新 / Refresh
             </button>
           </div>
         </div>
@@ -269,36 +284,32 @@ export default function ClaimsManagePage() {
               </div>
               <div className="flex items-center gap-2">
                 {order.status === "PENDING" && (
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    待验证 · T-{formatCountdown(order.remainingSeconds)}
-                  </span>
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">待验证 / Pending · T-{formatCountdown(order.remainingSeconds)}</span>
                 )}
                 {order.status === "VERIFIED" && (
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    待放款 · T-{formatCountdown(order.remainingSeconds)}
-                  </span>
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">已验证 / Verified · T-{formatCountdown(order.remainingSeconds)}</span>
                 )}
                 {order.status === "PAID" && (
-                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700">已赔付</span>
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700">已赔付 / Paid</span>
                 )}
               </div>
             </div>
 
             <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm text-gray-600">
               <div className="flex gap-2">
-                <span className="text-gray-500">购买时间</span>
+                <span className="text-gray-500">购买时间 / Purchase time</span>
                 <span>{order.purchaseTime}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-gray-500">订单号</span>
+                <span className="text-gray-500">订单号 / Order Ref</span>
                 <span className="font-mono">{order.orderRef || "-"}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-gray-500">最近验单账号</span>
+                <span className="text-gray-500">最近验单账号 / Latest account</span>
                 <span className="font-mono">{order.latestAccount || "-"}</span>
               </div>
               <div className="flex gap-2">
-                <span className="text-gray-500">倒计时</span>
+                <span className="text-gray-500">倒计时 / Countdown</span>
                 <span> T-{formatCountdown(order.remainingSeconds)}</span>
               </div>
             </div>
@@ -309,7 +320,7 @@ export default function ClaimsManagePage() {
                 onClick={() => handleOpenVerify(order)}
                 disabled={order.status === "PAID"}
               >
-                验证
+                验证 / Verify
               </button>
               <button
                 className={`px-3 py-2 rounded-lg border transition-colors ${
@@ -320,26 +331,34 @@ export default function ClaimsManagePage() {
                 onClick={() => handleMarkPaid(order)}
                 disabled={order.status !== "VERIFIED"}
               >
-                标记已赔付
+                标记已赔付 / Mark as paid
               </button>
               <button className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors">
-                详情
+                详情 / Details
               </button>
             </div>
             {expandedOrderId === order.id && (
               <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium text-gray-900">对该保单进行交易所验证</div>
-                  <div className="text-xs text-gray-400">仅验证此保单绑定账户下的订单</div>
+                    <div className="text-sm font-medium text-gray-900">对该保单进行交易所验证 / Verify on exchange</div>
+                    <div className="text-xs text-gray-400">仅验证此保单绑定账户下的订单 / Only orders under bound account</div>
                 </div>
+
+                {/* 已保存API密钥提示 */}
+                {pythonScriptService.hasApiKeys() && (
+                  <div className="mt-2 rounded-lg border border-green-200 bg-green-50/40 p-3">
+                    <div className="text-xs text-green-700 font-medium">✓ 已保存 API 密钥 / Saved API keys</div>
+                    <div className="text-xs text-green-600 mt-1">只需输入订单号，交易对将使用已保存的固定交易对 / Enter orderRef only; instId defaults to saved one</div>
+                  </div>
+                )}
 
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1">
-                    <label className="mb-1 block text-xs text-gray-500">交易所订单号 orderRef</label>
+                    <label className="mb-1 block text-xs text-gray-500">交易所订单号 / Order Ref</label>
                     <input
                       value={orderRefInput}
                       onChange={(e) => setOrderRefInput(e.target.value)}
-                      placeholder="例如：2940071038556348417"
+                      placeholder={'例如：2940071038556348417 / e.g., 2940071038556348417'}
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
                     />
                   </div>
@@ -350,7 +369,7 @@ export default function ClaimsManagePage() {
                     disabled={loading || !orderRefInput.trim()}
                     className="inline-flex items-center justify-center rounded-lg bg-amber-500 px-5 py-2 text-sm font-medium text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {loading ? "验证中…" : "验证"}
+                    {loading ? ('验证中… / Verifying…') : ('验证 / Verify')}
                   </button>
                 </div>
 
@@ -359,58 +378,103 @@ export default function ClaimsManagePage() {
                 {verifyResult && (
                   <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-gray-900">验证结果</div>
-                      <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-[11px] text-yellow-800">已验证 · 待放款（T+24h）</span>
+                      <div className="text-sm font-medium text-gray-900">验证结果 / Verify Result</div>
+                      <span className="inline-flex items-center rounded-full bg-yellow-100 px-3 py-1 text-[11px] text-yellow-800">已验证 · 待放款（T+24h） / Verified · Pending payout (T+24h)</span>
                     </div>
                     <dl className="mt-3 grid gap-1 text-xs text-gray-600">
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">交易所订单号</dt>
+                        <dt className="text-gray-500">交易所订单号 / Order Ref</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.orderRef}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">交易所</dt>
+                        <dt className="text-gray-500">交易所 / Exchange</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.exchange || '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">币对</dt>
+                        <dt className="text-gray-500">币对 / Pair</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.symbol || '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">方向</dt>
+                        <dt className="text-gray-500">方向 / Side</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.side || '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">数量</dt>
+                        <dt className="text-gray-500">数量 / Size</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.size ?? '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">是否清算</dt>
+                        <dt className="text-gray-500">是否清算 / Liquidated</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.isLiquidated ? "是" : "否"}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">PnL</dt>
+                        <dt className="text-gray-500">盈亏 / PnL</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.pnl ?? '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">爆仓时间</dt>
+                        <dt className="text-gray-500">爆仓时间 / Liquidation time</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.liquidationTime || '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">证据 ID</dt>
+                        <dt className="text-gray-500">证据 ID / Evidence ID</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.evidenceId || '-'}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-gray-500">可放款时间</dt>
+                        <dt className="text-gray-500">可放款时间 / Ready for payout at</dt>
                         <dd className="font-medium text-gray-900">{verifyResult.readyForPayoutAt || '-'}</dd>
                       </div>
                       {typeof verifyResult.payoutSuggest === 'number' && (
                         <div className="flex justify-between gap-4">
-                          <dt className="text-gray-500">建议赔付金额</dt>
+                          <dt className="text-gray-500">建议赔付金额 / Suggested payout</dt>
                           <dd className="font-medium text-gray-900">{verifyResult.payoutSuggest} USDC</dd>
                         </div>
                       )}
                     </dl>
-                    <p className="mt-2 text-[11px] text-gray-400">系统已保存证据与订单号，24 小时后由人工复核与放款。</p>
+                    <p className="mt-2 text-[11px] text-gray-400">系统已保存证据与订单号，24 小时后由人工复核与放款 / Evidence saved; manual review and payout in 24h.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">仅验证此保单绑定账户下的订单 / Only orders under the bound account are verified.</p>
+                    {((import.meta as any).env?.VITE_DEMO_MODE === '1') ? (
+                      <p className="mt-1 text-[11px] text-gray-500">当前为演示模式，结果用于界面联调；如需真实查询请在设置中配置 API 密钥并关闭演示模式 / Demo mode; configure API keys and disable demo for real verification.</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-gray-500">若未发生清算则不予赔付；如有异议可提交补充证据以便人工复核 / No payout if not liquidated; submit evidence for review if disputed.</p>
+                    )}
+                    {verifyResult.orderRaw && (
+                      <div className="mt-4">
+                        <div className="text-sm font-medium text-gray-900">订单原始信息 / Raw order info</div>
+                        <pre className="mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words">{JSON.stringify(verifyResult.orderRaw, null, 2)}</pre>
+                      </div>
+                    )}
+                    {Array.isArray(verifyResult.fills) && verifyResult.fills.length > 0 && (
+                      <div className="mt-4">
+                        <div className="text-sm font-medium text-gray-900">成交记录 / Fills</div>
+                        <div className="mt-2 overflow-x-auto">
+                          <table className="min-w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-gray-500">
+                                <th className="py-1 pr-4">时间 / Time</th>
+                                <th className="py-1 pr-4">方向 / Side</th>
+                                <th className="py-1 pr-4">价格 / Price</th>
+                                <th className="py-1 pr-4">数量 / Qty</th>
+                                <th className="py-1 pr-4">盈亏 / PnL</th>
+                                <th className="py-1 pr-4">手续费 / Fee</th>
+                                <th className="py-1 pr-4">成交ID / Trade ID</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {verifyResult.fills.map((f: any, idx: number) => (
+                                <tr key={idx} className="border-t border-gray-100">
+                                  <td className="py-1 pr-4">{f.ts ? new Date(Number(f.ts)).toLocaleString() : '-'}</td>
+                                  <td className="py-1 pr-4">{f.side || '-'}</td>
+                                  <td className="py-1 pr-4">{f.fillPx || '-'}</td>
+                                  <td className="py-1 pr-4">{f.fillSz || '-'}</td>
+                                  <td className="py-1 pr-4">{typeof f.fillPnl === 'string' || typeof f.fillPnl === 'number' ? f.fillPnl : '-'}</td>
+                                  <td className="py-1 pr-4">{typeof f.fee === 'string' || typeof f.fee === 'number' ? f.fee : '-'}</td>
+                                  <td className="py-1 pr-4 font-mono">{f.tradeId || f.billId || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -419,7 +483,7 @@ export default function ClaimsManagePage() {
         ))}
 
         {orders.length === 0 && (
-          <div className="p-6 bg-white border border-gray-200 rounded-xl text-gray-500 text-center">暂无记录</div>
+          <div className="p-6 bg-white border border-gray-200 rounded-xl text-gray-500 text-center">暂无记录 / No records</div>
         )}
       </div>
     </div>

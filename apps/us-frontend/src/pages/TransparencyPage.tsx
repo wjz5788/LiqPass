@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area, PieChart, Pie, Cell, Legend } from "recharts";
 import { RefreshCw, Database, ShieldCheck, ExternalLink, Wallet, BarChart3, PieChart as PieChartIcon, Gauge, Clock, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { ErrorMessage, LoadingSpinner } from '../components/ErrorBoundary';
+ 
 
 /**
  * LiqPass · 透明度页 (/transparency)
@@ -19,7 +20,7 @@ import { ErrorMessage, LoadingSpinner } from '../components/ErrorBoundary';
 // =====================
 // 配置
 // =====================
-const API_BASE = ""; // 同域部署留空，或例如 "/api"
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || ""; // 同域部署留空，或例如 "/api"
 const DEFAULT_RANGE = "7d"; // 7d | 30d | all
 const BASESCAN_TX = (hash: string) => `https://basescan.org/tx/${hash}`; // Base主网(8453)
 const BASESCAN_ADDR = (addr: string) => `https://basescan.org/address/${addr}`;
@@ -64,10 +65,10 @@ async function copy(text: string) {
 
 function mapEventType(type: string) {
   const map: Record<string, string> = {
-    purchase: "购买",
-    claim_paid: "赔付",
-    reserve_topup: "金库充值",
-    reserve_withdraw: "金库提取"
+    purchase: "保费 / Premium",
+    claim_paid: "赔付 / Paid",
+    reserve_topup: "入金 / Balance",
+    reserve_withdraw: "准备金 / Required",
   };
   return map[type] || type;
 }
@@ -75,9 +76,9 @@ function mapEventType(type: string) {
 // RangeSwitch 组件
 function RangeSwitch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const options = [
-    { value: "7d", label: "7天" },
-    { value: "30d", label: "30天" },
-    { value: "all", label: "全部" }
+    { value: "7d", label: "7d" },
+    { value: "30d", label: "30d" },
+    { value: "all", label: "全部 / All" }
   ];
 
   return (
@@ -260,12 +261,12 @@ export default function TransparencyPage() {
     if (!overview) return [];
     const { policiesSold, premiumUSDC, paidUSDC, lossRatio, activePolicies, treasuryBalance } = overview;
     return [
-      { label: "7D售出份数", value: fmtInt(policiesSold), icon: <BarChart3 size={16} /> },
-      { label: "7D保费", value: fmtUSDCCompat(premiumUSDC), icon: <Wallet size={16} /> },
-      { label: "7D已赔付", value: fmtUSDCCompat(paidUSDC), icon: <ShieldCheck size={16} /> },
-      { label: "7D赔付率", value: fmtPct(lossRatio), icon: <Gauge size={16} /> },
-      { label: "当前在保份数", value: fmtInt(overview.activePolicies), icon: <Clock size={16} /> },
-      { label: "金库余额", value: fmtUSDCCompat(treasuryBalance), icon: <Database size={16} /> },
+      { label: "7D售出份数 / 7D policies sold", value: fmtInt(policiesSold), icon: <BarChart3 size={16} /> },
+      { label: "7D保费 / 7D premium", value: fmtUSDCCompat(premiumUSDC), icon: <Wallet size={16} /> },
+      { label: "7D已赔付 / 7D paid", value: fmtUSDCCompat(paidUSDC), icon: <ShieldCheck size={16} /> },
+      { label: "7D赔付率 / 7D loss ratio", value: fmtPct(lossRatio), icon: <Gauge size={16} /> },
+      { label: "当前在保份数 / Active policies", value: fmtInt(overview.activePolicies), icon: <Clock size={16} /> },
+      { label: "金库余额 / Treasury balance", value: fmtUSDCCompat(treasuryBalance), icon: <Database size={16} /> },
     ];
   }, [overview]);
 
@@ -289,15 +290,15 @@ export default function TransparencyPage() {
       <div className="mx-auto max-w-7xl px-4 py-6">
         {/* 标题与控制 */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <h1 className="text-2xl font-semibold">透明度 Transparency</h1>
+          <h1 className="text-2xl font-semibold">透明度 / Transparency</h1>
           <div className="flex items-center gap-2">
             <RangeSwitch value={range} onChange={setRange} />
             <button
               onClick={loadAll}
               className="inline-flex items-center gap-1 rounded-xl border px-3 py-2 text-sm hover:bg-white/60"
-              title="刷新"
+              title={'刷新 / Refresh'}
             >
-              <RefreshCw size={16} /> 刷新
+              <RefreshCw size={16} /> 刷新 / Refresh
             </button>
           </div>
         </div>
@@ -312,7 +313,7 @@ export default function TransparencyPage() {
         )}
 
         {loading && (
-          <LoadingSpinner size="md" className="mb-6" text="透明度数据加载中..." />
+          <LoadingSpinner size="md" className="mb-6" text={'加载中… / Loading…'} />
         )}
 
         {/* 顶部KPI */}
@@ -334,11 +335,11 @@ export default function TransparencyPage() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <BarChart3 size={16} />
-                <span className="font-medium">保费/赔付（按UTC日）</span>
+                <span className="font-medium">每日保费与赔付 / Daily Premium & Paid</span>
               </div>
               <label className="text-sm inline-flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={showCumulative} onChange={(e) => setShowCumulative(e.target.checked)} />
-                累计
+                累计 / Cumulative
               </label>
             </div>
             <div className="h-72">
@@ -349,9 +350,12 @@ export default function TransparencyPage() {
                     <XAxis dataKey="date" tickFormatter={parseISODateUTC} />
                     <YAxis />
                     <Tooltip formatter={(v: number | string) => typeof v === 'number' ? fmtUSDCCompat(v).replace(" USDC", "") : String(v)} labelFormatter={(l) => `UTC ${l}`} />
+                    
                     <Legend />
-                    <Area type="monotone" name="累计保费" dataKey="cumPremium" stroke={COLOR_PREMIUM} fill={COLOR_PREMIUM} fillOpacity={0.3} />
-                    <Area type="monotone" name="累计赔付" dataKey="cumPaid" stroke={COLOR_PAID} fill={COLOR_PAID} fillOpacity={0.3} />
+                    <Area type="monotone" name={`累计保费 / Cumulative Premium`}
+                      dataKey="cumPremium" stroke={COLOR_PREMIUM} fill={COLOR_PREMIUM} fillOpacity={0.3} />
+                    <Area type="monotone" name={`累计赔付 / Cumulative Paid`}
+                      dataKey="cumPaid" stroke={COLOR_PAID} fill={COLOR_PAID} fillOpacity={0.3} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
@@ -360,10 +364,10 @@ export default function TransparencyPage() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" tickFormatter={parseISODateUTC} />
                     <YAxis />
-                    <Tooltip formatter={(v: number | string) => typeof v === 'number' ? fmtUSDCCompat(v).replace(" USDC", "") : String(v)} labelFormatter={(l) => `UTC ${l}`} />
+                    <Tooltip formatter={(v: number | string) => typeof v === 'number' ? fmtUSDCCompat(v).replace(" USDC", "") : String(v)} labelFormatter={(l) => `UTC 时间 / UTC: ${l}`} />
                     <Legend />
-                    <Line type="monotone" name="保费" dataKey="premium" dot={false} stroke={COLOR_PREMIUM} />
-                    <Line type="monotone" name="赔付" dataKey="paid" dot={false} stroke={COLOR_PAID} />
+                    <Line type="monotone" name={'保费 / Premium'} dataKey="premium" dot={false} stroke={COLOR_PREMIUM} />
+                    <Line type="monotone" name={'赔付 / Paid'} dataKey="paid" dot={false} stroke={COLOR_PAID} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -372,9 +376,9 @@ export default function TransparencyPage() {
 
           {/* 仪表 */}
           <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-2"><Gauge size={16} /><span className="font-medium">金库充足度</span></div>
+            <div className="flex items-center gap-2 mb-2"><Gauge size={16} /><span className="font-medium">金库充足度 / Reserve Adequacy</span></div>
             {gauge.pct === null ? (
-              <div className="text-sm text-stone-500">后端未提供 requiredReserve，暂不显示。可在 /transparency/overview 增加字段。</div>
+              <div className="text-sm text-stone-500">缺少 Required 值 / Missing required reserve</div>
             ) : (
               <div>
                 <div className="h-2 w-full rounded-full bg-stone-200 overflow-hidden">
@@ -384,10 +388,10 @@ export default function TransparencyPage() {
                   />
                 </div>
                 <div className="mt-2 text-sm flex justify-between">
-                  <span>余额 {fmtUSDCCompat(gauge.treasuryBalance)}</span>
-                  <span>需求 {fmtUSDCCompat(gauge.requiredReserve)}</span>
+                  <span>金库余额 / Balance {fmtUSDCCompat(gauge.treasuryBalance)}</span>
+                  <span>所需准备金 / Required {fmtUSDCCompat(gauge.requiredReserve)}</span>
                 </div>
-                <div className="mt-1 text-xs text-stone-500">{gauge.state === "ok" ? "ok ≥ 100%" : gauge.state === "warn" ? "warn 70–100%" : "critical < 70%"}</div>
+                <div className="mt-1 text-xs text-stone-500">{gauge.state === "ok" ? '充足 / Adequate' : gauge.state === "warn" ? '预警 / Warning' : '不足 / Critical'}</div>
               </div>
             )}
           </div>
@@ -397,14 +401,10 @@ export default function TransparencyPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
           <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2"><PieChartIcon size={16} /><span className="font-medium">本金档位占比</span></div>
+              <div className="flex items-center gap-2"><PieChartIcon size={16} /><span className="font-medium">本金分布 / Principal Buckets</span></div>
               <div className="flex gap-2 text-sm">
-                <button className={classNames("px-2 py-1 rounded-md border", metric === "count" ? "bg-white" : "opacity-70")} onClick={() => setMetric("count")}>
-                  份数
-                </button>
-                <button className={classNames("px-2 py-1 rounded-md border", metric === "premium" ? "bg-white" : "opacity-70")} onClick={() => setMetric("premium")}>
-                  保费
-                </button>
+                <button className={classNames("px-2 py-1 rounded-md border", metric === "count" ? "bg-white" : "opacity-70")} onClick={() => setMetric("count")}>份数 / Count</button>
+                <button className={classNames("px-2 py-1 rounded-md border", metric === "premium" ? "bg-white" : "opacity-70")} onClick={() => setMetric("premium")}>保费 / Premium</button>
               </div>
             </div>
             <div className="h-64">
@@ -415,28 +415,28 @@ export default function TransparencyPage() {
                       <Cell key={`c-${index}`} fill={PALETTE[index % PALETTE.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number | string, n: string, p: any) => [metric === "count" ? `${v} 份` : typeof v === 'number' ? fmtUSDCCompat(v).replace(" USDC", "") : String(v), p?.payload?.label]} />
+                  <Tooltip formatter={(v: number | string, n: string, p: any) => [metric === "count" ? `${v} 笔 / count` : typeof v === 'number' ? fmtUSDCCompat(v).replace(" USDC", "") : String(v), p?.payload?.label]} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-2 text-sm text-stone-500">合计：{metric === "count" ? fmtInt(donutData.total) + " 份" : fmtUSDCCompat(donutData.total)}</div>
+            <div className="mt-2 text-sm text-stone-500">总计 / Total：{metric === "count" ? fmtInt(donutData.total) + ' 笔' : fmtUSDCCompat(donutData.total)}</div>
           </div>
 
           <div className="lg:col-span-2 rounded-2xl border bg-white/70 p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-2"><Clock size={16} /><span className="font-medium">最近上链事件（20条）</span></div>
+            <div className="flex items-center gap-2 mb-2"><Clock size={16} /><span className="font-medium">事件摘录 / Events</span></div>
             {events.length === 0 ? (
-              <div className="py-6 text-sm text-stone-500">暂无上链事件。</div>
+              <div className="py-6 text-sm text-stone-500">暂无事件 / No events</div>
             ) : (
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left text-stone-500">
-                      <th className="py-2 pr-4">时间(UTC)</th>
-                      <th className="py-2 pr-4">事件</th>
-                      <th className="py-2 pr-4">金额</th>
-                      <th className="py-2 pr-4">指纹</th>
-                      <th className="py-2 pr-4">tx</th>
+                      <th className="py-2 pr-4">时间(UTC) / Time</th>
+                      <th className="py-2 pr-4">事件 / Event</th>
+                      <th className="py-2 pr-4">金额 / Amount</th>
+                      <th className="py-2 pr-4">摘要 / Digest</th>
+                      <th className="py-2 pr-4">交易 / Tx</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -449,7 +449,7 @@ export default function TransparencyPage() {
                         <td className="py-2 pr-4">
                           {e.tx_hash ? (
                             <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={BASESCAN_TX(e.tx_hash)} target="_blank" rel="noreferrer">
-                              查看 <ExternalLink size={14} />
+                              查看 / View <ExternalLink size={14} />
                             </a>
                           ) : (
                             <span className="text-stone-400">-</span>
@@ -466,35 +466,35 @@ export default function TransparencyPage() {
 
         {/* 审计块 */}
         <div className="rounded-2xl border bg-white/70 p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><ShieldCheck size={16} /><span className="font-medium">审计信息</span></div><button onClick={() => setAuditOpen(v => !v)} className="text-sm inline-flex items-center gap-1 text-blue-600 hover:underline">{auditOpen ? <>收起<ChevronDown size={14} /></> : <>展开<ChevronRight size={14} /></>}</button></div>
+          <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><ShieldCheck size={16} /><span className="font-medium">审计信息 / Audit</span></div><button onClick={() => setAuditOpen(v => !v)} className="text-sm inline-flex items-center gap-1 text-blue-600 hover:underline">{auditOpen ? <>收起 / Collapse<ChevronDown size={14} /></> : <>展开 / Expand<ChevronRight size={14} /></>}</button></div>
           {auditOpen && hasAudit && audit && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <div className="text-sm text-stone-500 mb-1">合约地址 · 链</div>
+                <div className="text-sm text-stone-500 mb-1">合约与链 / Contracts & Chain</div>
                 <ul className="text-sm space-y-1">
                   {audit.contracts?.map((c: any, i: number) => (
                     <li key={i} className="font-mono break-all">
                       {c.name ? <span className="mr-2">[{c.name}]</span> : null}
-                      <a href={BASESCAN_ADDR(c.address)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.address}</a><button onClick={() => copy(c.address)} className="ml-2 inline-flex items-center text-xs text-stone-500 hover:text-stone-700" title="复制地址"><Copy size={14} /></button>
-                      {c.chainId ? <span className="ml-2 text-stone-500">chainId {c.chainId}</span> : null}
+                      <a href={BASESCAN_ADDR(c.address)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{c.address}</a><button onClick={() => copy(c.address)} className="ml-2 inline-flex items-center text-xs text-stone-500 hover:text-stone-700" title={'复制 / Copy'}><Copy size={14} /></button>
+                      {c.chainId ? <span className="ml-2 text-stone-500">链ID / chainId {c.chainId}</span> : null}
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">最新承诺文档 docHash</div>
+                <div className="text-sm text-stone-500 mb-1">最新文档哈希 / Latest Doc Hash</div>
                 <div className="font-mono break-all text-sm">
                   {audit.docHash || "——"}
-                  {audit.docHash ? <button onClick={() => copy(audit.docHash)} className="ml-2 inline-flex items-center text-xs text-stone-500 hover:text-stone-700" title="复制"><Copy size={14} /></button> : null}
+                  {audit.docHash ? <button onClick={() => copy(audit.docHash)} className="ml-2 inline-flex items-center text-xs text-stone-500 hover:text-stone-700" title={'复制 / Copy'}><Copy size={14} /></button> : null}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">证据根 evidenceRoots</div>
+                <div className="text-sm text-stone-500 mb-1">证据根 / Evidence Roots</div>
                 <ul className="text-sm space-y-1">
                   {audit.evidenceRoots?.map((r: any, i: number) => (
                     <li key={i} className="font-mono break-all">
                       [{r.label}] {r.merkleRoot}
-                      <button onClick={() => copy(r.merkleRoot)} className="ml-2 inline-flex items-center text-xs text-stone-500 hover:text-stone-700" title="复制"><Copy size={14} /></button>
+                      <button onClick={() => copy(r.merkleRoot)} className="ml-2 inline-flex items-center text-xs text-stone-500 hover:text-stone-700" title={'复制 / Copy'}><Copy size={14} /></button>
                     </li>
                   ))}
                 </ul>
@@ -502,7 +502,7 @@ export default function TransparencyPage() {
             </div>
           )}
           {auditOpen && !hasAudit && (
-            <div className="text-sm text-stone-500">暂未配置审计信息。</div>
+            <div className="text-sm text-stone-500">—</div>
           )}
         </div>
 

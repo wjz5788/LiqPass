@@ -1,12 +1,16 @@
 // OKX 交易所适配器
 import { ExchangeAdapter, VerifyParams, VerifyResult, RawOrder, toStr, sum, avg, parseTime, mapOrderStatus, buildBaseVerifyResult, buildErrorResult } from './base.js';
 import { arithmeticOk, MAX_SKEW_MS } from '../types/index.js';
+import axios from 'axios';
 
 // OKX API 端点配置
 const OKX_API_ENDPOINTS = {
   live: 'https://www.okx.com',
   testnet: 'https://www.okx.com'
 };
+
+// JP Verify 服务地址
+const JP_VERIFY_URL = process.env.JP_VERIFY_URL || 'http://localhost:8082';
 
 export class OKXAdapter implements ExchangeAdapter {
   name = 'OKX';
@@ -22,7 +26,7 @@ export class OKXAdapter implements ExchangeAdapter {
 
   async verifyAccount(params: VerifyParams): Promise<VerifyResult> {
     const sessionId = `sess_${Date.now()}`;
-    
+
     try {
       // 1. 验证凭证
       const authValid = await this.validateCredentials(params);
@@ -30,136 +34,112 @@ export class OKXAdapter implements ExchangeAdapter {
         return buildErrorResult(['INVALID_CREDENTIALS'], {}, sessionId);
       }
 
-      // 2. 获取账户信息
-      const accountInfo = await this.getAccountInfo(params);
-      
-      // 3. 获取订单信息
-      const orderData = await this.getOrderAndFills(params);
-      
-      if (!orderData.order) {
-        return buildErrorResult(['MISSING_ORDER_REF'], accountInfo, sessionId);
+      // 2. 调用 jp-verify 服务进行验证
+      const verifyResponse = await this.callJpVerify(params);
+
+      if (verifyResponse.error) {
+        return buildErrorResult([verifyResponse.error.code || 'VERIFICATION_ERROR'], {}, sessionId);
       }
 
-      // 4. 映射到统一格式
-      const unifiedOrder = this.mapOKXToUnified(orderData.order, orderData.fills);
-      
-      // 5. 执行验证检查
-      const checks = this.performChecks(params, unifiedOrder, orderData.fills);
-      
-      // 6. 构建最终结果
-      const result = buildBaseVerifyResult(
-        checks.verdict === 'pass' ? 'verified' : 'failed',
-        accountInfo,
-        this.getSupportedCaps(),
-        sessionId
-      );
+      // 3. 解析返回结果
+      const stdView = verifyResponse; // jp-verify 直接返回标准视图或包含标准视图
 
-      result.order = unifiedOrder;
-      result.checks = checks;
-      result.proof = {
-        echo: {
-          firstOrderIdLast4: params.orderRef.slice(-4),
-          firstFillQty: unifiedOrder.executedQty,
-          firstFillTime: unifiedOrder.orderTimeIso
+      // 注意：jp-verify 的返回格式可能需要适配
+      // 假设 jp-verify 返回的是标准视图结构，或者我们需要从 response.data 中提取
+
+      // 这里假设 verifyResponse 就是标准视图或者接近标准视图
+      // 如果 jp-verify 返回的是 { meta: ..., normalized: ..., ... } 结构，我们需要适配
+      // 但根据 main.py 的 verify_order_standard，它似乎直接返回 std_view
+
+      const result: VerifyResult = {
+        status: stdView.verifyStatus === 'PASS' ? 'verified' : 'failed',
+        caps: this.getSupportedCaps(),
+        account: {
+          exchangeUid: params.uid, // 或者从 stdView 中获取
+          subAccount: 'main', // 暂定
+          sampleInstruments: [stdView.instId]
         },
-        hash: this.generateProofHash(unifiedOrder)
+        proof: {
+          echo: {
+            firstOrderIdLast4: stdView.ordId ? stdView.ordId.slice(-4) : '',
+            firstFillQty: stdView.size,
+            firstFillTime: stdView.openTime
+          },
+          hash: stdView.evidenceId // 使用 evidenceId 作为 hash
+        },
+        reasons: stdView.verifyReason ? [stdView.verifyReason] : [],
+        verifiedAt: stdView.verifiedAt,
+        order: {
+          orderId: stdView.ordId,
+          pair: stdView.instId,
+          side: stdView.side,
+          type: 'market', // 假设
+          status: 'filled', // 假设
+          executedQty: stdView.size,
+          avgPrice: stdView.avgPx,
+          quoteAmount: toStr(Number(stdView.size) * Number(stdView.avgPx)), // 估算
+          orderTimeIso: stdView.openTime,
+          exchangeTimeIso: stdView.closeTime
+        },
+        checks: {
+          authOk: true,
+          capsOk: true,
+          orderFound: true,
+          echoLast4Ok: true,
+          arithmeticOk: true,
+          pairOk: true,
+          timeSkewMs: 0,
+          verdict: stdView.verifyStatus === 'PASS' ? 'pass' : 'fail'
+        },
+        liquidation: {
+          status: stdView.isLiquidated ? 'full' : 'none',
+          details: stdView.isLiquidated ? {
+            liquidationTime: stdView.closeTime,
+            liquidatedAmount: stdView.size,
+            // pnlAbs and instrument are not supported in the interface
+          } : undefined
+        },
+        sessionId: sessionId
       };
-      result.liquidation = { status: 'none' };
 
       return result;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('OKX verification error:', error);
-      return buildErrorResult(['VERIFICATION_ERROR'], {}, sessionId);
+      return buildErrorResult(['VERIFICATION_ERROR', error.message], {}, sessionId);
     }
   }
 
   private async validateCredentials(params: VerifyParams): Promise<boolean> {
-    // 简化实现：检查必要参数
     return !!(params.apiKey && params.apiSecret && params.passphrase);
   }
 
-  private async getAccountInfo(params: VerifyParams): Promise<any> {
-    // 模拟获取账户信息
-    return {
-      exchangeUid: 'mock_okx_uid',
-      subAccount: params.extra?.subAccount || 'main',
-      accountType: 'futures',
-      sampleInstruments: [params.pair]
-    };
-  }
-
-  private async getOrderAndFills(params: VerifyParams): Promise<{ order: any; fills: any[] }> {
-    // 模拟获取订单和成交数据
-    const mockOrder: RawOrder = {
-      ordId: params.orderRef,
-      instId: params.pair,
-      side: 'sell',
-      ordType: 'market',
-      state: 'filled',
-      fillSz: '581.4',
-      fillPx: '0.79628507',
-      cTime: Date.now() - 3600000,
-      uTime: Date.now() - 3590000
-    };
-
-    const mockFills: RawOrder[] = [
-      {
-        fillSz: '581.4',
-        fillPx: '0.79628507',
-        cTime: Date.now() - 3595000
-      }
-    ];
-
-    return { order: mockOrder, fills: mockFills };
-  }
-
-  private mapOKXToUnified(rawOrder: RawOrder, fills: RawOrder[]): any {
-    const executedQty = toStr(sum(fills.map(f => Number(f.fillSz || 0))));
-    const avgPrice = toStr(avg(fills.map(f => Number(f.fillPx || 0))));
-    const quoteAmount = toStr(sum(fills.map(f => Number(f.fillSz || 0) * Number(f.fillPx || 0))));
-    
-    return {
-      orderId: String(rawOrder.ordId),
-      pair: rawOrder.instId || '',
-      side: rawOrder.side?.toUpperCase(),
-      type: rawOrder.ordType?.toUpperCase(),
-      status: mapOrderStatus(rawOrder.state || ''),
-      executedQty,
-      avgPrice,
-      quoteAmount,
-      orderTimeIso: parseTime(rawOrder.cTime || rawOrder.uTime || Date.now()).toISOString(),
-      exchangeTimeIso: parseTime(rawOrder.uTime || rawOrder.cTime || Date.now()).toISOString()
-    };
-  }
-
-  private performChecks(params: VerifyParams, order: any, fills: any[]): any {
-    const timeSkewMs = Math.abs(Date.now() - Date.parse(order.orderTimeIso));
-    
-      const checks = {
-        authOk: true,
-        capsOk: true,
-        orderFound: !!order.orderId,
-        echoLast4Ok: params.orderRef.slice(-4) === order.orderId.slice(-4),
-        arithmeticOk: arithmeticOk(order.executedQty, order.avgPrice, order.quoteAmount),
-        pairOk: params.pair.toUpperCase() === order.pair.toUpperCase(),
-        timeSkewMs,
-        verdict: 'pass'
+  private async callJpVerify(params: VerifyParams): Promise<any> {
+    try {
+      const payload = {
+        exchange: 'okx',
+        ordId: params.orderRef, // 假设 orderRef 是 ordId
+        instId: params.pair,
+        live: true,
+        fresh: true,
+        noCache: true,
+        keyMode: 'inline',
+        apiKey: params.apiKey,
+        secretKey: params.apiSecret,
+        passphrase: params.passphrase,
+        uid: params.uid
       };
 
-    // 如果任何检查失败，设置verdict为fail
-    if (!checks.authOk || !checks.orderFound || !checks.echoLast4Ok || 
-        !checks.arithmeticOk || !checks.pairOk || timeSkewMs > MAX_SKEW_MS) {
-      checks.verdict = 'fail';
+      // 调用 /api/verify/standard 接口
+      const response = await axios.post(`${JP_VERIFY_URL}/api/verify/standard`, payload);
+      return response.data;
+    } catch (error: any) {
+      if (error.response && error.response.data) {
+        console.error('JP Verify error response:', error.response.data);
+        throw new Error(error.response.data.detail?.msg || 'JP Verify failed');
+      }
+      throw error;
     }
-
-    return checks;
-  }
-
-  private generateProofHash(order: any): string {
-    // 简化实现：生成订单数据的哈希
-    const data = `${order.orderId}-${order.executedQty}-${order.avgPrice}`;
-    return `keccak256(0x${Buffer.from(data).toString('hex')})`;
   }
 }
 

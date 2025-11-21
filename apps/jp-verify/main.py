@@ -380,12 +380,11 @@ def generate_evidence_id():
     """生成证据ID"""
     return f"evi_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
-import sha3  # 用于 keccak256
+from Crypto.Hash import keccak  # 用于 keccak256
 from rfc8785 import dumps as jcs_dumps  # JCS Canonical JSON
 
 def calculate_hash(data: str) -> str:
-    """计算 keccak256 哈希值"""
-    return "0x" + sha3.keccak_256(data.encode()).hexdigest()
+    return "0x" + keccak.new(digest_bits=256, data=data.encode()).hexdigest()
 
 def serialize_json_fixed(data: dict) -> str:
     """固定顺序序列化 JSON"""

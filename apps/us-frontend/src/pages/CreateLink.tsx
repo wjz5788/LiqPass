@@ -14,7 +14,7 @@ interface CreateLinkProps {
   t: Dictionary;
 }
 
-export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
+export const CreateLink: React.FC = () => {
   const navigate = useNavigate();
   const { push } = useToast();
   const { address } = useWallet();
@@ -93,8 +93,8 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
   };
 
   const breadcrumbItems = [
-    { label: t.home, to: '/' },
-    { label: t.createLink }
+    { label: '首页 / Home', to: '/' },
+    { label: '创建链接 / Create Link' }
   ];
 
   return (
@@ -102,8 +102,8 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
       <Breadcrumb items={breadcrumbItems} />
       
       <div className="mt-6">
-        <h1 className="text-3xl font-bold">{t.createLink}</h1>
-        <p className="mt-2 text-stone-600">{t.createLinkDesc}</p>
+        <h1 className="text-3xl font-bold">创建支付链接 / Create Link</h1>
+        <p className="mt-2 text-stone-600">填写产品参数生成支付链接 / Fill the form to generate a payment link</p>
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-2">
@@ -111,29 +111,25 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
         <Card className="p-6">
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-2">
-                {t.product}
-              </label>
+              <label className="block text-sm font-medium text-stone-700 mb-2">产品 / Product</label>
               <Select
                 value={formData.product}
                 onChange={(e) => handleInputChange('product', e.target.value)}
               >
-                <option value="">选择产品</option>
-                <option value="24h">24h 当日爆仓保</option>
-                <option value="7d">7天爆仓保</option>
-                <option value="30d">30天爆仓保</option>
+                <option value="">请选择产品 / Select product</option>
+                <option value="24h">{t.productOption24h}</option>
+                <option value="7d">{t.productOption7d}</option>
+                <option value="30d">{t.productOption30d}</option>
               </Select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-2">
-                {t.symbol}
-              </label>
+              <label className="block text-sm font-medium text-stone-700 mb-2">交易对 / Symbol</label>
               <Select
                 value={formData.symbol}
                 onChange={(e) => handleInputChange('symbol', e.target.value)}
               >
-                <option value="">选择交易对</option>
+                <option value="">请选择交易对 / Select symbol</option>
                 <option value="BTCUSDT">BTC/USDT</option>
                 <option value="ETHUSDT">ETH/USDT</option>
                 <option value="SOLUSDT">SOL/USDT</option>
@@ -141,26 +137,22 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-2">
-                {t.amount}
-              </label>
+              <label className="block text-sm font-medium text-stone-700 mb-2">金额 / Amount</label>
               <Input
                 type="number"
                 value={formData.amount}
                 onChange={(e) => handleInputChange('amount', e.target.value)}
-                placeholder="输入金额"
+                placeholder={'请输入金额 / Enter amount'}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-2">
-                {t.duration}
-              </label>
+              <label className="block text-sm font-medium text-stone-700 mb-2">时长 / Duration</label>
               <Input
                 type="number"
                 value={formData.duration}
                 onChange={(e) => handleInputChange('duration', e.target.value)}
-                placeholder="输入时长（小时）"
+                placeholder={'请输入时长（小时） / Enter duration (hours)'}
               />
             </div>
 
@@ -169,7 +161,7 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
               disabled={!address}
               className="w-full"
             >
-              {address ? t.createLink : t.connectWalletFirst}
+              {address ? '创建链接 / Create Link' : '请先连接钱包 / Connect wallet first'}
             </Button>
           </div>
         </Card>
@@ -177,25 +169,25 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
         {/* 预览区域 */}
         <Card className="p-6">
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold">支付链接预览</h3>
+            <h3 className="text-lg font-semibold">预览 / Preview</h3>
             
             {formData.product && formData.symbol && formData.amount && formData.duration ? (
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-stone-600">产品:</span>
+                  <span className="text-stone-600">{t.product}:</span>
                   <span className="font-medium">{formData.product}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-stone-600">交易对:</span>
+                  <span className="text-stone-600">{t.symbol}:</span>
                   <span className="font-medium">{formData.symbol}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-stone-600">金额:</span>
+                  <span className="text-stone-600">金额 / Amount:</span>
                   <span className="font-medium">{formData.amount} USDC</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-stone-600">时长:</span>
-                  <span className="font-medium">{formData.duration} 小时</span>
+                  <span className="text-stone-600">时长 / Duration:</span>
+                  <span className="font-medium">{formData.duration} 小时 / hours</span>
                 </div>
                 
                 <div className="mt-4 p-3 bg-stone-50 rounded text-xs font-mono break-all">
@@ -209,7 +201,7 @@ export const CreateLink: React.FC<CreateLinkProps> = ({ t }) => {
               </div>
             ) : (
               <div className="text-center text-stone-500 py-8">
-                <div className="text-sm">填写表单查看预览</div>
+                <div className="text-sm">填写表单以生成预览 / Fill the form to preview</div>
               </div>
             )}
           </div>

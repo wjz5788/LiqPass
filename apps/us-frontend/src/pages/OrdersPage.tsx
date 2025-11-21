@@ -1,25 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { OrderCardData, PolicyStatus, ChainName } from "../types/order";
+import { OrderCardData, ChainName } from "../types/order";
 import { getExplorerTxUrl } from "../lib/explorer";
-import { PolicyStatusTag } from "../components/PolicyStatusTag";
-import { getAuthToken, loginWithWallet } from "../lib/auth";
-import { authFetch } from "../lib/authFetch";
 
 // =============================
 // 工具函数
 // =============================
 
-const toMs = (t: number | string): number => {
-  if (t == null) return NaN;
-  if (typeof t === "number") {
-    // 判断是秒还是毫秒：小于 10^12 视为秒
-    return t < 1e12 ? t * 1000 : t;
+const toMs = (time: number | string): number => {
+  if (time == null) return NaN;
+  if (typeof time === "number") {
+    return time < 1e12 ? time * 1000 : time;
   }
-  // 字符串：可能是纯数字或 ISO
-  const n = Number(t);
+  const n = Number(time);
   if (!Number.isNaN(n)) return n < 1e12 ? n * 1000 : n;
-  const d = new Date(t).getTime();
+  const d = new Date(time).getTime();
   return Number.isFinite(d) ? d : NaN;
 };
 
@@ -54,154 +48,76 @@ const shortRef = (ref: string) => {
 // 子组件：订单卡
 // =============================
 
-const OrderCard: React.FC<{ data: OrderCardData }> = ({ data }) => {
-  const navigate = useNavigate();
-  const { principal, leverage, premiumPaid, payoutMax, status, coverageStartTs, coverageEndTs, createdAt, orderRef, exchangeAccountId, chain, txHash, orderDigest, title } = data;
 
-  const endMs = toMs(coverageEndTs);
-  const now = Date.now();
-  const remainMs = Math.max(0, endMs - now);
-  const isExpiredUi = remainMs <= 0 || status === "expired";
-  const isPendingOnchain = status === "pending_onchain";
 
-  const badge = (s: string) => {
-    const map: Record<string, { t: string; bg: string; fg: string }> = {
-      pending_onchain: { t: "待上链", bg: "#fef9c3", fg: "#854d0e" },
-      active: { t: "生效中", bg: "#dcfce7", fg: "#065f46" },
-      expired: { t: "已过期", bg: "#e5e7eb", fg: "#374151" },
-    };
-    const v = map[s] || { t: s, bg: "#e5e7eb", fg: "#374151" };
-    return <span style={{ background: v.bg, color: v.fg, padding: "2px 8px", borderRadius: 999, fontSize: 12 }}>{v.t}</span>;
-  };
+type OrderStatus = "ACTIVE" | "PENDING" | "EXPIRED";
 
-  const fmtRemain = (ms: number) => {
-    const s = Math.floor(ms / 1000);
-    const hh = String(Math.floor(s / 3600)).padStart(2, "0");
-    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-    const ss = String(s % 60).padStart(2, "0");
-    return `T-${hh}:${mm}:${ss}`;
-  };
+interface Order {
+  id: string;
+  productName: string;
+  status: OrderStatus;
+  premiumUsd: number;
+  maxPayoutUsd: number;
+  remainSeconds: number;
+  txHash?: string | null;
+}
 
-  const claimEnabled = status === "active" && !isExpiredUi;
+function formatCountdown(seconds: number) {
+  const h = Math.max(0, Math.floor(seconds / 3600));
+  const m = Math.max(0, Math.floor((seconds % 3600) / 60));
+  const s = Math.max(0, seconds % 60);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
 
-  const onClaimClick = (o: OrderCardData) => {
-    navigate(`/claims?orderId=${o.id}`);
-  };
-
-  const onDetailClick = (o: OrderCardData) => {
-    // 跳转到订单详情页面
-    navigate(`/orders/${o.id}`);
-  };
-
-  const btn = (disabled = false): React.CSSProperties => {
-    return { padding: "8px 12px", borderRadius: 10, background: disabled ? "#f5f5f5" : "#ffffff", border: "1px solid #e5e7eb", cursor: disabled ? "not-allowed" : "pointer" };
-  };
-
-  const SmallKV: React.FC<{ k: string; v: string }> = ({ k, v }) => (
-    <span style={{ background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 8, padding: "2px 8px", fontSize: 12 }}>
-      <b style={{ color: "#334155" }}>{k}</b> <span style={{ color: "#0f172a" }}>{v}</span>
-    </span>
-  );
-
-  const Field: React.FC<{ label: string; value: React.ReactNode; mono?: boolean }> = ({ label, value, mono }) => (
-    <div style={{ display: "flex", gap: 8 }}>
-      <span style={{ color: "#737373", whiteSpace: "nowrap", wordBreak: "keep-all" }}>{label}</span>
-      <span style={{ fontFamily: mono ? "ui-monospace, SFMono-Regular, Menlo, monospace" : undefined }}>{value}</span>
-    </div>
-  );
+const BilingualOrderCard: React.FC<{ order: Order }> = ({ order }) => {
+  const statusLabel =
+    order.status === "ACTIVE"
+      ? "生效中 / Active"
+      : order.status === "PENDING"
+      ? "待生效 / Pending"
+      : "已结束 / Expired";
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-      {/* 顶部 */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="font-semibold">{title || "24h 爆仓保"}</div>
-          <div className="flex gap-2 flex-wrap">
-            <SmallKV k="Principal" v={`$${num(principal, 2)}`} />
-            <SmallKV k="Leverage" v={`${leverage}×`} />
-            <SmallKV k="Premium" v={`$${num(premiumPaid, 2)}`} />
-            <SmallKV k="Payout Max" v={`$${num(payoutMax, 2)}`} />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <PolicyStatusTag
-            order={{
-              txHash,
-              coverageStart: Number.isFinite(toMs(coverageStartTs))
-                ? new Date(toMs(coverageStartTs)).toISOString()
-                : String(coverageStartTs),
-              coverageEnd: Number.isFinite(toMs(coverageEndTs))
-                ? new Date(toMs(coverageEndTs)).toISOString()
-                : String(coverageEndTs),
-            }}
-          />
-        </div>
-      </div>
-
-      {/* 次要信息 */}
-      <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm text-gray-600">
-        <Field label="购买时间" value={fmtDate(createdAt)} />
-        <Field label="覆盖窗口" value={`${fmtDate(coverageStartTs)} → ${fmtDate(coverageEndTs)}`} />
-        <Field
-          label="保单号"
-          value={(
-            <span title={data.id}>
-              {shortRef(data.id)}
-              <button
-                className="ml-2 px-1 rounded border border-gray-200 bg-white hover:bg-gray-50 text-xs text-gray-600"
-                onClick={() => {
-                  const v = data.id;
-                  if (!v) return;
-                  navigator.clipboard.writeText(String(v)).catch(() => {});
-                }}
-              >
-                复制
-              </button>
-            </span>
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 px-6 py-5 flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="text-lg font-semibold text-slate-900">{order.productName}</div>
+        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span>{statusLabel}</span>
+          {order.status === "ACTIVE" && (
+            <span className="text-[11px] text-emerald-600">{formatCountdown(order.remainSeconds)}</span>
           )}
-          mono
-        />
-        <Field label="交易所账户" value={exchangeAccountId || "-"} mono />
-      </div>
-
-      {/* 动作 */}
-      <div className="mt-3">
-        <div className="flex gap-2 flex-wrap">
-          {(() => {
-            const url = getTxUrl(data.chain, data.txHash);
-            return (
-              <button
-                className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
-                disabled={!url}
-                onClick={() => {
-                  if (!url) return;
-                  console.log("跳转链上交易：", { orderId: data.id, txHash: data.txHash, url });
-                  window.open(url, "_blank", "noopener,noreferrer");
-                }}
-              >
-                {url ? "查看链上" : "暂无交易"}
-              </button>
-            );
-          })()}
-          <button 
-            className={`px-3 py-2 rounded-lg border transition-colors ${
-              claimEnabled 
-                ? 'bg-white border-gray-200 hover:bg-gray-50 text-gray-900' 
-                : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-            disabled={!claimEnabled} 
-            onClick={() => onClaimClick(data)}
-          >
-            发起理赔
-          </button>
-          <button 
-            className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
-            onClick={() => onDetailClick(data)}
-          >
-            详情
-          </button>
+        </div>
+        <div className="ml-auto text-right text-slate-900">
+          <div className="text-base font-semibold">${order.maxPayoutUsd.toFixed(2)}</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">最大赔付金额 / Max payout</div>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-slate-50 px-4 py-3 flex flex-col gap-1">
+          <div className="text-xs text-slate-500">已付保费 / Premium paid</div>
+          <div className="text-base font-semibold text-slate-900">${order.premiumUsd.toFixed(2)}</div>
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-4 py-3 flex flex-col gap-1">
+          <div className="text-xs text-slate-500">剩余时间 / Remaining time</div>
+          <div className="text-base font-semibold text-slate-900">{order.status === "ACTIVE" ? formatCountdown(order.remainSeconds) : '—'}</div>
+        </div>
+      </div>
+
+      {order.txHash && (
+        <div className="flex flex-wrap gap-3 pt-1">
+          <a
+            href={getExplorerTxUrl({ chainId: null, txHash: order.txHash })}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            查看链上交易 / View on explorer
+          </a>
+        </div>
+      )}
     </div>
   );
 };
@@ -211,11 +127,10 @@ const OrderCard: React.FC<{ data: OrderCardData }> = ({ data }) => {
 // =============================
 
 interface OrdersPageProps {
-  t: (key: string) => string;
   apiBase?: string;
 }
 
-export const OrdersPage: React.FC<OrdersPageProps> = ({ t, apiBase = "" }) => {
+export const OrdersPage: React.FC<OrdersPageProps> = ({ apiBase = "" }) => {
   const [walletAddr, setWalletAddr] = useState<string>("");
   try {
     const w = (window as any)?.ethereum;
@@ -314,37 +229,40 @@ export const OrdersPage: React.FC<OrdersPageProps> = ({ t, apiBase = "" }) => {
   const total = rows.length;
 
   return (
-    <div className="min-h-screen bg-[#FFF7ED] text-[#3F2E20]">
-      {/* 顶部条 */}
-      <div className="sticky top-16 z-10 bg-[#FFF7EDF2] border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-xl bg-yellow-400 border border-gray-100" />
-            <div className="font-semibold">订单管理</div>
-            <div className="text-sm text-gray-500">倒序 · 共 {total} 笔</div>
-            {loading && <div className="text-sm text-amber-800">加载中</div>}
-            {error && <div className="text-sm text-red-700">{error}</div>}
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={refresh} 
-              className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              刷新
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 卡片列表 */}
-      <div className="max-w-7xl mx-auto px-4 py-6 grid gap-3">
-        {rows.map((o) => (
-          <OrderCard key={o.id} data={o} />
-        ))}
+    <div className="max-w-3xl mx-auto px-4 py-6">
+      <h1 className="text-xl font-semibold mb-2">订单管理 / Orders</h1>
+      <p className="text-sm text-gray-500 mb-4 leading-relaxed">
+        在这里查看你的保单订单，并跟踪状态。<br />
+        View all your policy orders here and track their status.
+      </p>
+      <div className="flex flex-col gap-3">
+        {rows.map((o) => {
+          const endMs = toMs(o.coverageEndTs);
+          const remainSec = Number.isFinite(endMs) ? Math.max(0, Math.floor((endMs - Date.now()) / 1000)) : 0;
+          const status: OrderStatus = (o.status === "pending_onchain")
+            ? "PENDING"
+            : (o.status === "expired" || remainSec <= 0)
+            ? "EXPIRED"
+            : "ACTIVE";
+          const order = {
+            id: o.id,
+            productName: o.title || "24h 爆仓保",
+            status,
+            premiumUsd: o.premiumPaid,
+            maxPayoutUsd: o.payoutMax,
+            remainSeconds: remainSec,
+            txHash: o.txHash || null,
+          };
+          return <BilingualOrderCard key={o.id} order={order} />;
+        })}
         {rows.length === 0 && !loading && (
-          <div className="p-6 bg-white border border-gray-200 rounded-xl text-gray-500 text-center">
-            暂无订单
-          </div>
+          <div className="text-sm text-gray-400">暂无订单 / No orders yet.</div>
+        )}
+        {loading && (
+          <div className="text-sm text-gray-500">加载中 / Loading…</div>
+        )}
+        {error && (
+          <div className="text-sm text-red-600">加载失败：{error}</div>
         )}
       </div>
     </div>

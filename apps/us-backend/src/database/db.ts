@@ -16,7 +16,7 @@ export interface DatabaseInterface {
 }
 
 export class DatabaseManager {
-  private db: Database.Database | null = null;
+  private db: any | null = null;
   private dbPath: string;
   private initialized: Promise<void>;
   public verifications: Map<string, any>;

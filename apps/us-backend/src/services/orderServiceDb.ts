@@ -94,7 +94,7 @@ const clamp = (value: number, min: number, max: number): number => {
 export class OrderServiceDb {
   private payment: PaymentConfig;
   private quoteTtlSeconds: number;
-  private db: Database;
+  private db: any;
 
   constructor(options: { payment: PaymentConfig; quoteTtlSeconds?: number }) {
     this.payment = options.payment;

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Dictionary } from '../types';
+//
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useWallet } from '../contexts/WalletContext';
@@ -50,11 +50,7 @@ function computeQuote(principal: number, lev: number, k: number) {
   return { p, baseFee, fee, payout, feeAmt: p * fee, payoutAmt: p * payout };
 }
 
-interface ProductsProps {
-  t: Dictionary;
-}
-
-export const Products: React.FC<ProductsProps> = ({ t }) => {
+export const Products: React.FC = () => {
   // 恢复持久化
   const initPrincipal = (() => { try { return Number(localStorage.getItem("lp_principal")) || 200; } catch { return 200; } })();
   const initLev = (() => { try { return ensureInt(localStorage.getItem("lp_lev")) || 20; } catch { return 20; } })();
@@ -75,11 +71,12 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
   const { push } = useToast();
   const { baseFee, fee, payout, feeAmt, payoutAmt, p } = useMemo(() => computeQuote(principal, lev, k), [principal, lev, k]);
   const [buying, setBuying] = useState(false);
+  const F = (v: string, d: string) => d;
 
   // === 替换版 handleBuy（② 支付路径改为 approve→buyPolicy） ===
   const handleBuy = async () => {
     if (!address) {
-      push({ title: '请先连接钱包' });
+      push({ title: '需连接钱包 / Wallet required' });
       try { await connectWallet(); } catch {}
       return;
     }
@@ -90,7 +87,7 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
       }
       const amountUSDC = '0.01';
       const res = await payAndSubmit(amountUSDC);
-      push({ title: '支付交易已发起', desc: `tx=${(res?.txHash || '').slice(0, 10)}…` });
+      push({ title: '已发起支付 / Payment started', desc: `tx=${(res?.txHash || '').slice(0, 10)}…` });
       try {
         const now = Date.now();
         const localRaw = localStorage.getItem('lp_local_orders') || '[]';
@@ -121,7 +118,7 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
       } catch {}
       navigate('/orders');
     } catch (e: any) {
-      push({ title: e?.message || '支付失败' });
+      push({ title: e?.message || '支付失败 / Payment failed' });
     } finally {
       setBuying(false);
     }
@@ -177,10 +174,8 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* 页面标题 */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-stone-900 mb-4">LiqPass 产品中心</h1>
-          <p className="text-lg text-stone-600 max-w-2xl mx-auto">
-            体验我们的爆仓保险产品，自定义参数，实时查看报价，创建专业的支付链接
-          </p>
+          <h1 className="text-4xl font-bold text-stone-900 mb-4">产品中心 / Product Center</h1>
+          <p className="text-lg text-stone-600 max-w-2xl mx-auto">浏览爆仓保险产品，配置参数，实时查看报价，创建专业支付链接 / Explore liquidation insurance products, customize parameters, view quotes in real time, and create payment links.</p>
         </div>
 
         {/* 产品展示区域 */}
@@ -188,13 +183,13 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
           {/* 左侧：配置面板 */}
           <div className="lg:col-span-3">
             <Card className="p-6">
-              <h2 className="text-2xl font-semibold text-stone-900 mb-6">24小时爆仓保</h2>
+              <h2 className="text-2xl font-semibold text-stone-900 mb-6">24h 爆仓保 / 24h Liquidation Cover</h2>
               
               <div className="space-y-6">
                 {/* 本金 */}
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-2">
-                    本金（USDT）<span className="ml-2 text-stone-400">范围 {MIN_P}-{MAX_P}</span>
+                  本金 / Principal (USDT)<span className="ml-2 text-stone-400">范围 / Range {MIN_P}-{MAX_P}</span>
                   </label>
                   <div className="flex items-center gap-3">
                     <input
@@ -221,7 +216,7 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
                 {/* 杠杆 */}
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-2">
-                    杠杆（x）<span className="ml-2 text-stone-400">范围 {MIN_L}-{MAX_L}</span>
+                  杠杆 / Leverage (x)<span className="ml-2 text-stone-400">范围 / Range {MIN_L}-{MAX_L}</span>
                   </label>
                   <div className="flex items-center gap-3">
                     <input
@@ -247,33 +242,33 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
                 
                 {/* 定价系数 */}
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-2">定价系数 k</label>
+                  <label className="block text-sm font-medium text-stone-700 mb-2">定价系数 k / Pricing factor k</label>
                   <div className="flex items-center justify-between gap-3 p-3 bg-stone-100 rounded-lg border border-stone-300">
-                    <span className="text-sm text-stone-600">默认固定为</span>
+                    <span className="text-sm text-stone-600">默认固定为 / Default fixed as</span>
                     <span className="font-semibold text-stone-900 text-lg">1.00</span>
                   </div>
-                  <p className="mt-2 text-xs text-stone-500">最终保费比例 = min(15%， baseFee × 1.00)</p>
+                  <p className="mt-2 text-xs text-stone-500">最终费率 = min(15%, 基础费率 × 1.00) / Final premium rate = min(15%, baseFee × 1.00)</p>
                 </div>
 
                 {/* 产品特性 */}
                 <div className="pt-4 border-t border-stone-200">
-                  <h3 className="font-semibold text-stone-900 mb-3">产品特性</h3>
+                  <h3 className="font-semibold text-stone-900 mb-3">产品特性 / Product Features</h3>
                   <ul className="space-y-2 text-sm text-stone-600">
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>
-                      24小时保障窗口
+                      24h 覆盖窗口 / 24h coverage window
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>
-                      爆仓自动赔付
+                      爆仓自动赔付 / Auto payout on liquidation
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>
-                      USDC链上支付
+                      链上 USDC 支付 / On-chain USDC payment
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-amber-600 rounded-full"></span>
-                      透明定价机制
+                      定价透明 / Transparent pricing
                     </li>
                   </ul>
                 </div>
@@ -284,19 +279,19 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
           {/* 右侧：报价和操作 */}
           <div className="lg:col-span-2">
             <Card className="p-6 sticky top-6">
-              <h3 className="text-xl font-semibold text-stone-900 mb-4">保障详情</h3>
+              <h3 className="text-xl font-semibold text-stone-900 mb-4">保障明细 / Coverage Details</h3>
               
               <div className="space-y-3 text-sm">
-                <Row label="本金">{fmtUSD(clamp(principal, MIN_P, MAX_P))} USDT</Row>
-                <Row label="杠杆">{lev}x</Row>
-                <Row label="定价系数">{Number(k).toFixed(2)}</Row>
+                <Row label={'本金 / Principal'}>{fmtUSD(clamp(principal, MIN_P, MAX_P))} USDT</Row>
+                <Row label={'杠杆 / Leverage'}>{lev}x</Row>
+                <Row label={'定价系数 / Pricing Factor'}>{Number(k).toFixed(2)}</Row>
                 <div className="h-px bg-stone-200 my-2" />
-                <Row label="保费比例（基础）">{fmtPct(baseFee)}</Row>
-                <Row label="保费比例（最终）">{fmtPct(fee)}</Row>
-                <Row label="保费金额">{fmtUSD(feeAmt)} USDT</Row>
+                <Row label={'保费费率（基础） / Premium Rate (base)'}>{fmtPct(baseFee)}</Row>
+                <Row label={'保费费率（最终） / Premium Rate (final)'}>{fmtPct(fee)}</Row>
+                <Row label={'保费金额 / Premium Amount'}>{fmtUSD(feeAmt)} USDT</Row>
                 <div className="h-px bg-stone-200 my-2" />
-                <Row label="赔付比例">{fmtPct(payout)}</Row>
-                <Row label="赔付金额">{fmtUSD(payoutAmt)} USDT</Row>
+                <Row label={'赔付比例 / Payout Rate'}>{fmtPct(payout)}</Row>
+                <Row label={'最高赔付金额 / Payout Amount'}>{fmtUSD(payoutAmt)} USDT</Row>
               </div>
 
               <div className="mt-6 space-y-3">
@@ -305,7 +300,7 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
                   disabled={buying}
                   className="w-full py-3 bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-60"
                 >
-                  {buying ? '下单中…' : '立即投保'}
+                  {buying ? '下单中… / Placing order…' : '立即购买 / Buy Now'}
                 </Button>
                 
                 <Button 
@@ -313,13 +308,11 @@ export const Products: React.FC<ProductsProps> = ({ t }) => {
                   variant="outline"
                   className="w-full py-3 border-stone-300 text-stone-700 hover:bg-stone-50"
                 >
-                  创建支付链接
+                  创建链接 / Create Link
                 </Button>
               </div>
 
-              <p className="mt-4 text-xs text-stone-500">
-                真实投保需：连接钱包 → 生成订单 → USDC 支付 → 链上登记
-              </p>
+              <p className="mt-4 text-xs text-stone-500">真实下单流程：连接钱包 → 创建订单 → 支付 USDC → 链上记录 / Real purchase requires: connect wallet → create order → USDC payment → on-chain record</p>
             </Card>
           </div>
         </div>

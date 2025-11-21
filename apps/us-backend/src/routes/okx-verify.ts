@@ -3,7 +3,6 @@ import express, { type RequestHandler } from 'express';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { evidenceStorage } from '../utils/evidenceStorage.js';
-import dbManager from '../database/db.js';
 
 const router = express.Router();
 
@@ -191,53 +190,7 @@ const handleVerify: RequestHandler = async (req, res) => {
       eligibility_reason: eligibilityReason
     };
 
-    // 尝试将验证结果写入 verify_results 表（非阻断）
-    try {
-      const db = dbManager.getDatabase();
-      const insertSql = `
-        INSERT INTO verify_results (
-          id, order_id, user_id, exchange, ord_id, inst_id,
-          normalized_json, checks_json, evidence_id, evidence_json, perf_json,
-          verdict, error_json, verified_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-      const id = `vrf_${requestId}`;
-      const userId = ((req as any)?.auth?.authInfo?.id) || 'anonymous';
-      const normalized = JSON.stringify((response.data as any)?.normalized || null);
-      const checks = JSON.stringify({
-        is_liquidated: isLiquidated,
-        eligible_for_purchase: eligibleForPurchase,
-        eligibility_reason: eligibilityReason,
-        ord_matches: ordMatches,
-        inst_matches: instMatches
-      });
-      const evidence = JSON.stringify((response.data as any)?.evidence || null);
-      const perf = JSON.stringify((response.data as any)?.perf || null);
-      const errorJson = JSON.stringify((response.data as any)?.error || null);
-      const nowIso = new Date().toISOString();
-
-      db.run(
-        insertSql,
-        id,
-        null,
-        String(userId),
-        'okx',
-        String(request.ordId),
-        String(normalizedInstId),
-        normalized,
-        checks,
-        String(evidenceId),
-        evidence,
-        perf,
-        verdict,
-        errorJson,
-        nowIso,
-        nowIso
-      );
-      console.log(`[${requestId}] 验证结果已写入 verify_results: ${id}`);
-    } catch (writeErr) {
-      console.warn(`[${requestId}] 写入 verify_results 失败:`, (writeErr as any)?.message || writeErr);
-    }
+    
 
     if (clientMode === 'full') {
       res.status(response.status).json(responseWithEvidence);
@@ -383,20 +336,13 @@ router.post('/standard', handleVerifyStandard);
 router.post('/okx/standard', handleVerifyStandard);
 
 router.post('/confirm', async (req, res) => {
-  try {
-    const { evidenceId, ordId, instId, orderId, kind } = req.body || {};
-    if (!evidenceId || !ordId || !instId) {
-      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', msg: 'evidenceId、ordId、instId 必填' } });
-    }
-    const db = dbManager.getDatabase();
-    const eventId = `evt_${uuidv4()}`;
-    const meta = JSON.stringify({ ordId: String(ordId), instId: String(instId) });
-    const eventType = typeof kind === 'string' && kind ? String(kind) : 'system_confirm';
-    db.run('INSERT INTO audit_events (id, event_type, order_id, evidence_id, meta_json) VALUES (?, ?, ?, ?, ?)', eventId, eventType, orderId ? String(orderId) : null, String(evidenceId), meta);
-    res.json({ status: 'confirmed', eventId, evidenceId, ordId: String(ordId), instId: String(instId), kind: eventType });
-  } catch (e: any) {
-    res.status(500).json({ error: { code: 'INTERNAL_ERROR', msg: '确认失败', hint: e?.message || String(e) } });
+  const { evidenceId, ordId, instId, kind } = req.body || {};
+  if (!evidenceId || !ordId || !instId) {
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', msg: 'evidenceId、ordId、instId 必填' } });
   }
+  const eventId = `evt_${uuidv4()}`;
+  const eventType = typeof kind === 'string' && kind ? String(kind) : 'system_confirm';
+  res.json({ status: 'confirmed', eventId, evidenceId: String(evidenceId), ordId: String(ordId), instId: String(instId), kind: eventType });
 });
 
 /**

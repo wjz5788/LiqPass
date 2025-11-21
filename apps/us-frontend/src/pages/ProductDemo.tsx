@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Dictionary } from '../types';
 
 // 公共函数
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
@@ -73,11 +72,7 @@ function showModal(title: string, content: string) {
   closeButton.addEventListener('click', closeModal);
 }
 
-interface ProductDemoProps {
-  t: Dictionary;
-}
-
-export const ProductDemo: React.FC<ProductDemoProps> = ({ t }) => {
+export const ProductDemo: React.FC = () => {
   // 恢复持久化
   const initPrincipal = (() => { try { return Number(localStorage.getItem("lp_principal")) || 200; } catch { return 200; } })();
   const initLev = (() => { try { return ensureInt(localStorage.getItem("lp_lev")) || 20; } catch { return 20; } })();

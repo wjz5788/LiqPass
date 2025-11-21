@@ -36,9 +36,9 @@ export const MAIN_NAV = [
 
 // 账户菜单配置
 export const ACCOUNT_MENU_ITEMS = [
-  { label: "订单管理", to: "/orders" },
-  { label: "赔付管理", to: "/claims" },
-  { label: "API 设置", to: "/settings/api" },
+  { label: "订单管理 / Orders", to: "/orders" },
+  { label: "赔付管理 / Claims", to: "/claims" },
+  { label: "API 设置 / API Settings", to: "/settings/api" },
 ] as const;
 
 // 产品列表
@@ -52,7 +52,6 @@ export const PRODUCTS = [
 // Base主网智能合约配置
 export const CHECKOUT_CONTRACT_ADDRESS =
   import.meta.env.VITE_CHECKOUT_CONTRACT_ADDRESS ||
-  import.meta.env.VITE_CHECKOUT_USDC_ADDRESS || // 兼容旧字段
   "0xc423c34b57730ba87fb74b99180663913a345d68";
 export const BASE_USDC_ADDRESS =
   import.meta.env.VITE_BASE_USDC_ADDRESS ||

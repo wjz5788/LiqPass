@@ -1,42 +1,40 @@
 import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import DocCN from './help/DocCN';
+import DocEN from './help/DocEN';
+import Doc10 from './help/Doc10';
 
-interface HelpProps {
-  t: any;
-}
-
-export const Help: React.FC<HelpProps> = ({ t }) => {
+export const Help: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const path = location.pathname;
+  const current = path.endsWith('/en') ? 'EN' : path.endsWith('/10') ? 'DOC10' : 'CN';
   return (
     <div className="min-h-screen bg-[#FFF7ED] text-[#3F2E20]">
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="text-3xl font-bold mb-8">帮助中心</h1>
-        
-        <div className="grid gap-6">
-          <div className="rounded-2xl border bg-white/70 p-6 shadow-sm">
-            <h2 className="text-xl font-semibold mb-4">常见问题</h2>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-medium mb-2">什么是 LiqPass？</h3>
-                <p className="text-stone-600">LiqPass 是一个基于区块链的支付保护平台，提供支付链接创建、风险控制和赔付管理等功能。</p>
-              </div>
-              <div>
-                <h3 className="font-medium mb-2">如何创建支付链接？</h3>
-                <p className="text-stone-600">点击导航栏中的"产品"，然后选择"创建支付链接"，填写相关信息即可生成支付链接。</p>
-              </div>
-              <div>
-                <h3 className="font-medium mb-2">如何查看透明度报告？</h3>
-                <p className="text-stone-600">点击导航栏中的"透明度"可以查看平台的运营数据、赔付统计和审计信息。</p>
-              </div>
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6">帮助 / Help</h1>
+        <div className="grid grid-cols-12 gap-6">
+          <aside className="col-span-12 md:col-span-3">
+            <div className="rounded-2xl border bg-white/70 p-4 shadow-sm space-y-2">
+              <button
+                onClick={() => navigate('/help')}
+                className={`w-full text-left px-3 py-2 rounded-lg border ${current === 'CN' ? 'bg-[#3F2E20] text-white' : 'bg-white/70 text-[#3F2E20]'}`}
+              >中文文档（最终版）</button>
+              <button
+                onClick={() => navigate('/help/en')}
+                className={`w-full text-left px-3 py-2 rounded-lg border ${current === 'EN' ? 'bg-[#3F2E20] text-white' : 'bg-white/70 text-[#3F2E20]'}`}
+              >English Document</button>
+              <button
+                onClick={() => navigate('/help/10')}
+                className={`w-full text-left px-3 py-2 rounded-lg border ${current === 'DOC10' ? 'bg-[#3F2E20] text-white' : 'bg-white/70 text-[#3F2E20]'}`}
+              >10 页面说明</button>
             </div>
-          </div>
-          
-          <div className="rounded-2xl border bg-white/70 p-6 shadow-sm">
-            <h2 className="text-xl font-semibold mb-4">联系我们</h2>
-            <div className="space-y-2 text-stone-600">
-              <p>邮箱: support@liqpass.com</p>
-              <p>Discord: LiqPass#1234</p>
-              <p>Telegram: @LiqPassSupport</p>
-            </div>
-          </div>
+          </aside>
+          <section className="col-span-12 md:col-span-9">
+            {current === 'CN' && <DocCN />}
+            {current === 'EN' && <DocEN />}
+            {current === 'DOC10' && <Doc10 />}
+          </section>
         </div>
       </div>
     </div>

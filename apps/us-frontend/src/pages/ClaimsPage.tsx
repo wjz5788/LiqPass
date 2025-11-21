@@ -5,9 +5,6 @@ import { getExplorerTxUrl } from "../lib/explorer";
 import { authFetch } from '../lib/authFetch';
 import { getAuthToken, loginWithWallet } from '../lib/auth';
 
-interface ClaimsPageProps {
-  t: (key: string) => string;
-}
 
 interface ClaimRecord {
   id: string;
@@ -63,7 +60,7 @@ async function walletSendClaimPayout(): Promise<string> {
   return '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random()*16).toString(16)).join('');
 }
 
-export const ClaimsPage: React.FC<ClaimsPageProps> = ({ t }) => {
+export const ClaimsPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { address, connectWallet } = useWallet();
@@ -81,13 +78,13 @@ export const ClaimsPage: React.FC<ClaimsPageProps> = ({ t }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">请先连接钱包</h2>
-            <p className="text-gray-600 mb-6">连接钱包以查看和管理您的赔付申请</p>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">请先连接钱包 / Connect Wallet</h2>
+            <p className="text-gray-600 mb-6">连接钱包以查看和管理您的赔付申请 / Connect wallet to manage claims</p>
             <button 
               onClick={connectWallet}
               className="inline-flex items-center px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
             >
-              连接钱包
+              连接钱包 / Connect Wallet
             </button>
           </div>
         </div>
@@ -99,7 +96,7 @@ export const ClaimsPage: React.FC<ClaimsPageProps> = ({ t }) => {
     <div className="container mx-auto p-4">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">赔付管理</h1>
+          <h1 className="text-2xl font-bold text-gray-900">赔付管理 / Claims</h1>
           <div className="flex gap-2">
             <button
               onClick={() => navigate('/claims')}
@@ -109,7 +106,7 @@ export const ClaimsPage: React.FC<ClaimsPageProps> = ({ t }) => {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              赔付列表
+              赔付列表 / Claims List
             </button>
             <button
               onClick={() => navigate('/claims/new')}
@@ -119,7 +116,7 @@ export const ClaimsPage: React.FC<ClaimsPageProps> = ({ t }) => {
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              发起赔付
+              发起赔付 / Submit Claim
             </button>
           </div>
         </div>
@@ -247,20 +244,20 @@ function ClaimsList() {
                     <div><span className="text-gray-500">证据类型:</span><span className="ml-2 font-medium">{claim.evidence?.type || '-'}</span></div>
                   </div>
                   <div className="mt-3 flex gap-2">
-                    <button onClick={onToggle} className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50">{isExpanded ? '收起' : '验证订单'}</button>
+                    <button onClick={onToggle} className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50">{isExpanded ? '收起 / Collapse' : '验证订单 / Verify'}</button>
                     {url ? (
-                      <a href={url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50">查看链上</a>
+                      <a href={url} target="_blank" rel="noreferrer" className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50">查看链上 / View on chain</a>
                     ) : null}
                   </div>
                   {isExpanded && (
                     <div className="mt-3 p-3 border border-gray-100 rounded-lg">
                       <div className="grid gap-3 md:grid-cols-2">
                         <div>
-                          <label className="block text-xs font-medium text-gray-600">交易所订单号</label>
-                          <input value={ordInput} onChange={e => onInput(e.target.value)} className="w-full rounded border border-gray-300 px-3 py-2 text-sm" placeholder="请输入交易所订单号" />
+                          <label className="block text-xs font-medium text-gray-600">交易所订单号 / Order Ref</label>
+                          <input value={ordInput} onChange={e => onInput(e.target.value)} className="w-full rounded border border-gray-300 px-3 py-2 text-sm" placeholder="请输入交易所订单号 / Enter orderRef" />
                         </div>
                         <div className="flex items-end">
-                          <button onClick={onVerify} disabled={verifying} className="w-full px-3 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50">{verifying ? '验证中...' : '验证'}</button>
+                          <button onClick={onVerify} disabled={verifying} className="w-full px-3 py-2 rounded-lg bg-red-600 text-white disabled:opacity-50">{verifying ? '验证中… / Verifying…' : '验证 / Verify'}</button>
                         </div>
                       </div>
                       {vres && (
@@ -390,42 +387,42 @@ function NewClaimView({ orderId }: { orderId: string }) {
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-lg font-semibold mb-4">发起赔付申请</h2>
+        <h2 className="text-lg font-semibold mb-4">发起赔付申请 / Submit Claim</h2>
         
         {/* 订单摘要 */}
         <div className="mb-6">
-          <h3 className="text-md font-medium mb-3">订单摘要（只读）</h3>
+          <h3 className="text-md font-medium mb-3">订单摘要（只读） / Order Summary (read-only)</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
             <div className="flex justify-between">
-              <span className="text-gray-600">订单ID:</span>
+              <span className="text-gray-600">订单ID / Order ID:</span>
               <span className="font-medium">{orderData.orderId}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">账户:</span>
+              <span className="text-gray-600">账户 / Account:</span>
               <span className="font-medium">{orderData.exchangeAccountId}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">本金:</span>
+              <span className="text-gray-600">本金 / Principal:</span>
               <span className="font-medium">{orderData.principal} USDT</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">杠杆:</span>
+              <span className="text-gray-600">杠杆 / Leverage:</span>
               <span className="font-medium">{orderData.leverage}x</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">已付保费:</span>
+              <span className="text-gray-600">已付保费 / Premium Paid:</span>
               <span className="font-medium">{orderData.premiumPaid} USDC</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">赔付上限:</span>
+              <span className="text-gray-600">赔付上限 / Max payout:</span>
               <span className="font-medium">{orderData.payoutMax} USDC</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">保障开始:</span>
+              <span className="text-gray-600">保障开始 / Coverage start:</span>
               <span className="font-medium">{orderData.coverage.start}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">保障结束:</span>
+              <span className="text-gray-600">保障结束 / Coverage end:</span>
               <span className="font-medium">{orderData.coverage.end}</span>
             </div>
           </div>
@@ -433,13 +430,11 @@ function NewClaimView({ orderId }: { orderId: string }) {
 
         {/* 交易所订单号输入 */}
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            交易所订单号 orderRef
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">交易所订单号 / Order Ref</label>
           <input
             type="text"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-            placeholder="请输入交易所订单号"
+            placeholder="请输入交易所订单号 / Enter orderRef"
             value={orderRef}
             onChange={(e) => setOrderRef(e.target.value)}
           />
@@ -449,7 +444,7 @@ function NewClaimView({ orderId }: { orderId: string }) {
               disabled={verifying}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {verifying ? "验证中..." : "验证"}
+              {verifying ? "验证中… / Verifying…" : "验证 / Verify"}
             </button>
           </div>
         </div>
@@ -458,19 +453,19 @@ function NewClaimView({ orderId }: { orderId: string }) {
         {verifyResult && (
           <div className="mb-6 p-4 border border-gray-200 rounded-lg">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-md font-medium">核验结果</h3>
+              <h3 className="text-md font-medium">核验结果 / Verification Result</h3>
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                 verifyResult.eligible 
                   ? 'bg-green-100 text-green-800' 
                   : 'bg-red-100 text-red-800'
               }`}>
-                {verifyResult.eligible ? "可赔付" : "不可赔"}
+                {verifyResult.eligible ? "可赔付 / Eligible" : "不可赔 / Ineligible"}
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
-                <span className="text-gray-600 text-sm">赔付金额:</span>
+                <span className="text-gray-600 text-sm">赔付金额 / Payout:</span>
                 <div className="font-medium">{verifyResult.payout} {verifyResult.currency}</div>
               </div>
               <div>
@@ -478,25 +473,25 @@ function NewClaimView({ orderId }: { orderId: string }) {
                 <div className="font-medium">{verifyResult.claimId}</div>
               </div>
               <div>
-                <span className="text-gray-600 text-sm">过期时间:</span>
+                <span className="text-gray-600 text-sm">过期时间 / Expires at:</span>
                 <div className="font-medium">{verifyResult.expiresAt ? new Date(verifyResult.expiresAt).toLocaleString() : '-'}</div>
               </div>
             </div>
 
             {verifyResult.evidence && (
               <div className="mb-4">
-                <h4 className="text-sm font-medium mb-2">证明片段 Evidence</h4>
+                <h4 className="text-sm font-medium mb-2">证明片段 / Evidence</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm bg-gray-50 rounded-lg p-3">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">类型:</span>
+                    <span className="text-gray-600">类型 / Type:</span>
                     <span className="font-medium">{verifyResult.evidence.type}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">时间:</span>
+                    <span className="text-gray-600">时间 / Time:</span>
                     <span className="font-medium">{new Date(verifyResult.evidence.time).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">交易对:</span>
+                    <span className="text-gray-600">交易对 / Pair:</span>
                     <span className="font-medium">{verifyResult.evidence.pair}</span>
                   </div>
                 </div>
@@ -514,7 +509,7 @@ function NewClaimView({ orderId }: { orderId: string }) {
                     className="rounded border-gray-300 text-red-600 focus:ring-red-500"
                   />
                   <label htmlFor="confirm" className="text-sm text-gray-700">
-                    我已确认核验结果与赔付金额
+                    我已确认核验结果与赔付金额 / I confirm the verification and payout amount
                   </label>
                 </div>
                 <button
@@ -522,7 +517,7 @@ function NewClaimView({ orderId }: { orderId: string }) {
                   disabled={!verifyResult.eligible || !confirm || paying}
                   onClick={handlePayout}
                 >
-                  {paying ? "链上赔付中..." : "赔付（你付gas）"}
+                  {paying ? "链上赔付中… / Payout on-chain…" : "赔付（你付 gas） / Payout (you pay gas)"}
                 </button>
               </div>
             )}
@@ -531,13 +526,13 @@ function NewClaimView({ orderId }: { orderId: string }) {
 
         {/* 帮助信息 */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-blue-900 mb-2">操作说明</h4>
+          <h4 className="text-sm font-medium text-blue-900 mb-2">操作说明 / How it works</h4>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• 从订单卡点击"发起赔付"进入此页面</li>
-            <li>• 输入交易所订单号进行验证</li>
-            <li>• 验证通过后可发起链上赔付申请</li>
-            <li>• 用户支付gas费用，合约将USDC赔付到用户钱包</li>
-            <li>• 成功后可在赔付列表查看交易详情</li>
+            <li>• 从“订单管理 / Orders”点击“发起理赔 / Submit claim”进入此页</li>
+            <li>• 输入交易所订单号进行验证 / Enter exchange orderRef to verify</li>
+            <li>• 验证通过后可发起链上赔付申请 / If eligible, submit on-chain payout</li>
+            <li>• 用户支付 gas，合约将 USDC 赔付到用户钱包 / You pay gas; contract pays USDC to your wallet</li>
+            <li>• 成功后可在赔付列表查看交易详情 / View details in Claims list after success</li>
           </ul>
         </div>
       </div>

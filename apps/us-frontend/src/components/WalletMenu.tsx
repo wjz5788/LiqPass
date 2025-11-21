@@ -29,7 +29,7 @@ export function WalletMenu({ address, onLogout }: { address?: string; onLogout?:
     return () => window.removeEventListener('keydown', handleEscape);
   }, []);
 
-  const displayText = address ? truncateAddress(address) : '个人';
+  const displayText = address ? truncateAddress(address) : '我 / Me';
 
   const getMenuPosition = () => {
     if (!buttonRef.current) return { right: 0, top: 0 };
@@ -70,13 +70,18 @@ export function WalletMenu({ address, onLogout }: { address?: string; onLogout?:
               <>
                 {ACCOUNT_MENU_ITEMS.map(item => (
                   <Link
-                    key={item.label}
+                    key={item.to}
                     to={item.to}
                     onClick={() => setIsOpen(false)}
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-stone-800 hover:bg-stone-50 transition-colors"
                   >
                     <span>•</span>
-                    <span>{item.label}</span>
+                    <span>{
+                      item.to === '/orders' ? '订单管理 / Orders' :
+                      item.to === '/claims' ? '赔付管理 / Claims' :
+                      item.to === '/settings/api' ? 'API 设置 / API Settings' :
+                      item.label
+                    }</span>
                   </Link>
                 ))}
                 <button
@@ -86,7 +91,7 @@ export function WalletMenu({ address, onLogout }: { address?: string; onLogout?:
                   }}
                   className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-stone-700 hover:bg-stone-50 transition-colors"
                 >
-                  退出
+                  {'退出登录 / Logout'}
                 </button>
               </>
             ) : (
@@ -96,12 +101,12 @@ export function WalletMenu({ address, onLogout }: { address?: string; onLogout?:
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
                 </div>
-                <p className="text-sm text-stone-600 mb-3">请先连接钱包以访问账户功能</p>
+                <p className="text-sm text-stone-600 mb-3">{'请先连接钱包 / Please connect wallet'}</p>
                 <button
                   onClick={() => setIsOpen(false)}
                   className="inline-flex items-center px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-sm"
                 >
-                  关闭
+                  {'关闭 / Close'}
                 </button>
               </div>
             )}

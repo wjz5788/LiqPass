@@ -6,8 +6,9 @@ import rateLimit from 'express-rate-limit';
 import { createHttpTerminator } from 'http-terminator';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import OrderService from './services/orderService.js';
 import registerRoutes from './routes/index.js';
+import AuthService from './services/authService.js';
+import OrderService from './services/orderService.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
@@ -60,11 +61,9 @@ app.use(requestLogger);
 
 // Swagger 暂时关闭（最小可运行后端）
 
-// 初始化服务
+const authService = new AuthService();
 const orderService = new OrderService();
-
-// 注册路由
-registerRoutes(app, { orderService });
+registerRoutes(app, { authService, orderService });
 
 
 // 错误处理中间件

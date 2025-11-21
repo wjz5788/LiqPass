@@ -177,7 +177,7 @@ export class MigrationManager {
             this.db.run('COMMIT');
             
             console.log(`✅ Migration ${migration.filename} applied successfully`);
-          } catch (error) {
+          } catch (error: any) {
             // 回滚事务
             this.db.run('ROLLBACK');
             
@@ -198,7 +198,7 @@ export class MigrationManager {
       }
       
       console.log('✅ All migrations completed successfully');
-    } catch (error) {
+      } catch (error: any) {
       console.error('❌ Migration process failed:', error.message);
       throw error;
     }
@@ -250,7 +250,7 @@ export class MigrationManager {
             this.db.run('COMMIT');
             
             console.log(`✅ Migration ${migration.filename} rolled back successfully`);
-          } catch (error) {
+          } catch (error: any) {
             // 回滚事务
             this.db.run('ROLLBACK');
             
@@ -267,7 +267,7 @@ export class MigrationManager {
       }
       
       console.log(`✅ Rolled back ${migrationsToRollback.length} migration(s) successfully`);
-    } catch (error) {
+      } catch (error: any) {
       console.error('❌ Rollback process failed:', error.message);
       throw error;
     }
