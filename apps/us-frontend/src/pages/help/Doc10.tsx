@@ -36,7 +36,7 @@ Verifiable trust: Everything is driven by objective events and evidence chains, 
 
 3. 商业模式 / 如何赚钱
 
-3. Business Model / How You Make Money
+Business Model / How You Make Money
 
 C 端保费：核心收入。
 Retail premiums: Core revenue stream.
