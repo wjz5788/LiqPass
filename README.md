@@ -426,17 +426,7 @@ When reporting issues, please include:
 - **Environment Details**: OS, browser, node version, etc.
 - **Logs/Screenshots**: Relevant error messages or screenshots
 
-## 📈 Performance Metrics
 
-### Platform Statistics
-
-| Metric | Current Value | Target |
-|--------|---------------|---------|
-| **Active Users** | 10,000+ | 50,000 |
-| **Total Compensation** | $5,000,000+ | $25,000,000 |
-| **Uptime** | 99.9% | 99.99% |
-| **Response Time** | < 200ms | < 100ms |
-| **Security Incidents** | 0 | 0 |
 
 ### Technical Performance
 
@@ -457,45 +447,17 @@ When reporting issues, please include:
 - **[Smart Contracts](./docs/06-智能合约/)** - Contract development and security
 - **[Security Audit](./docs/07-安全审计/)** - Security assessments and compliance
 
-### Additional Resources
-
-- **[Documentation Site](https://wjz5788.github.io/LiqPass/)** - Public documentation portal
-- **[API Reference](https://docs.liqpass.com/api)** - Interactive API documentation
-- **[Demo Environment](https://demo.liqpass.com)** - Live demonstration platform
-- **[Community Forum](https://discord.gg/liqpass)** - Community discussions and support
-
-## 🏆 Recognition & Awards
-
-- **Innovation Award 2024** - Best Blockchain Application
-- **Security Excellence 2024** - Zero Security Incidents
-- **User Satisfaction 2024** - 98% Customer Satisfaction Rate
-- **Technical Excellence 2024** - Best Architecture Design
-
 ## 📄 License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ## 🔗 Links
 
-- **🌐 Official Website**: https://liqpass.com
-- **📱 Smart Contract**: [BaseScan](https://basescan.org/address/0xc4d1bedc8850771af2d9db2c6d24ec21a8829709)
-- **📊 API Documentation**: [API Reference](https://docs.liqpass.com/api)
-- **🎯 Demo Environment**: [Demo Site](https://demo.liqpass.com)
-- **🐛 Issue Tracker**: [GitHub Issues](https://github.com/wjz5788/LiqPass/issues)
-- **💬 Community**: [Discord Channel](https://discord.gg/liqpass)
-- **🔒 Security**: security@liqpass.com
-
-## 🙏 Acknowledgments
-
-We extend our gratitude to:
-
-- **Our Users**: For trusting us with their trading protection needs
-- **Open Source Community**: For the incredible tools and libraries that power LiqPass
-- **Security Researchers**: For helping us maintain the highest security standards
-- **Blockchain Community**: For advancing the technology that makes this possible
-
----
+- **🌐 Official Website**: https://wjz5788.com/
+- **📱 Smart Contract**: [BaseScan](https://basescan.org/address/0xC423C34b57730Ba87FB74b99180663913a345D68)
+- **🐛 Issue Tracker**: [GitHub Issues](https://github.com/wjz5788/LiqPass/issues
+- **🔒 Security**: zmshyc@gmail.com
 
 **LiqPass** - Making cryptocurrency trading safer and more secure for everyone. 🛡️
 
-*Last Updated: 2025-01-20*
+*Last Updated: 2025-11-23*
