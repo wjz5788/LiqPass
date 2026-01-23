@@ -112,7 +112,7 @@ LiqPass/
 
 ### Live Demo
 
-**立即体验**: [https://wjz5788.com/](https://wjz5788.com/)
+**立即体验**: [https://liqpass.com/]
 
 我们的演示环境已经部署并运行，您可以立即访问体验LiqPass的全部功能：
 - 实时清算保护监控
@@ -184,7 +184,7 @@ pnpm docker:deploy
 
 我们的演示环境已经部署在云端，提供完整的LiqPass功能体验：
 
-**访问地址**: https://wjz5788.com/
+**访问地址**:[ liqpass.com/](https://liqpass.com/)
 
 **演示环境特性**:
 - ✅ 实时清算保护监控
@@ -453,7 +453,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ## 🔗 Links
 
-- **🌐 Official Website**: https://wjz5788.com/
+- **🌐 Official Website**: https://liqpass.com/
 - **📱 Smart Contract**: [BaseScan](https://basescan.org/address/0xC423C34b57730Ba87FB74b99180663913a345D68)
 - **🐛 Issue Tracker**: [GitHub Issues](https://github.com/wjz5788/LiqPass/issues
 - **🔒 Security**: zmshyc@gmail.com
