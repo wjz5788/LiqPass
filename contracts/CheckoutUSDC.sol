@@ -31,6 +31,9 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
     /// @notice quoteHash有效期映射（秒）
     mapping(bytes32 => uint256) public quoteHashExpiry;
 
+    /// @notice 报价最长有效期，避免误传一个极远的过期时间导致长期可用
+    uint256 public constant MAX_QUOTE_TTL = 1 hours;
+
     /// @dev 下单支付事件
     event PremiumPaid(
         bytes32 indexed orderId,
@@ -68,13 +71,39 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
     function pause()   external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
 
+    /// @notice 由「买家 + 订单号 + 金额」唯一确定的报价承诺
+    /// @dev 修复：原设计里 quoteHash 是一个和订单无关的裸哈希，
+    ///      而 registerQuoteHash 又会公开 emit 出来。任何人都能抄走一个
+    ///      尚未过期的 quoteHash，用**自己的** orderId 和**任意**金额调用
+    ///      buyPolicy —— 报价里承诺的买家/金额/金库完全没有被强制执行。
+    ///      现在 quoteHash 必须等于对 (buyer, orderId, amount) 的承诺。
+    function quoteCommitment(address buyer, bytes32 orderId, uint256 amount)
+        public
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(buyer, orderId, amount));
+    }
+
     /// @notice 注册quoteHash并设置有效期
-    /// @param quoteHash 报价哈希
+    /// @param quoteHash 必须由 quoteCommitment(buyer, orderId, amount) 计算得到
     /// @param expiryTime 过期时间（Unix时间戳）
-    function registerQuoteHash(bytes32 quoteHash, uint256 expiryTime) external onlyOwner {
+    function registerQuoteHash(bytes32 quoteHash, uint256 expiryTime) public onlyOwner {
+        require(quoteHash != bytes32(0), "zero quote hash");
         require(expiryTime > block.timestamp, "invalid expiry time");
+        require(expiryTime <= block.timestamp + MAX_QUOTE_TTL, "expiry too far");
         quoteHashExpiry[quoteHash] = expiryTime;
         emit QuoteHashRegistered(quoteHash, expiryTime);
+    }
+
+    /// @notice 便捷入口：直接按 (buyer, orderId, amount) 注册报价
+    function registerQuote(address buyer, bytes32 orderId, uint256 amount, uint256 expiryTime)
+        external
+        onlyOwner
+        returns (bytes32 quoteHash)
+    {
+        quoteHash = quoteCommitment(buyer, orderId, amount);
+        registerQuoteHash(quoteHash, expiryTime);
     }
 
     /// @notice 验证quoteHash是否有效
@@ -83,37 +112,43 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
         return quoteHashExpiry[quoteHash] > block.timestamp;
     }
 
-    /// @notice 验证USDC金额是否有效（6位精度，步长1e-6）
-    /// @param amount 要验证的金额
-    function isValidAmount(uint256 amount) public pure returns (bool) {
-        // 检查金额大于0
-        if (amount == 0) return false;
-        
-        // 检查金额不超过最大安全值（防止溢出）
-        if (amount > type(uint128).max) return false;
-        
-        // 检查精度：金额必须是1e6的整数倍
-        return amount % (10 ** USDC_DECIMALS) == 0;
+    /// @notice 单笔支付上限（micro-USDC），与链下业务规则一致，可由 owner 调整
+    uint256 public maxAmount = 100 * (10 ** USDC_DECIMALS); // 100 USDC
+
+    /// @notice 单笔支付下限（micro-USDC）
+    uint256 public minAmount = 10_000; // 0.01 USDC
+
+    event AmountLimitsUpdated(uint256 minAmount, uint256 maxAmount);
+
+    function setAmountLimits(uint256 newMin, uint256 newMax) external onlyOwner {
+        require(newMin > 0 && newMin <= newMax, "invalid limits");
+        minAmount = newMin;
+        maxAmount = newMax;
+        emit AmountLimitsUpdated(newMin, newMax);
     }
-    
-    /// @notice 验证并标准化USDC金额
-    /// @param amount 要验证的金额
-    function validateAndNormalizeAmount(uint256 amount) public pure returns (uint256) {
+
+    /// @notice 验证USDC金额是否有效
+    /// @dev 修复：原实现写的是 `amount % 1e6 == 0`，即只接受**整数个 USDC**，
+    ///      与 USDC_AMOUNT_RULES.md 里「步长 1e-6、最小 0.01 USDC」的规则直接冲突，
+    ///      也导致后端算出的任何带小数的保费（绝大多数）在链上必然 revert。
+    ///      USDC 本身就是 6 位精度，链上金额已经是最小单位整数，无需再取模。
+    /// @param amount 要验证的金额（micro-USDC）
+    function isValidAmount(uint256 amount) public view returns (bool) {
+        return amount >= minAmount && amount <= maxAmount;
+    }
+
+    /// @notice 验证金额
+    /// @param amount 要验证的金额（micro-USDC）
+    function validateAndNormalizeAmount(uint256 amount) public view returns (uint256) {
         require(isValidAmount(amount), "invalid amount");
-        
-        // 标准化金额：去除可能的尾随零
-        uint256 normalizedAmount = amount / (10 ** USDC_DECIMALS) * (10 ** USDC_DECIMALS);
-        
-        // 确保标准化后金额不变
-        require(normalizedAmount == amount, "amount normalization failed");
-        
-        return normalizedAmount;
+        return amount;
     }
 
     /// @notice 用户先对 USDC 执行 approve(CheckoutUSDC, amount)，再调用本函数完成支付
     /// @param orderId   订单ID（建议 keccak(UUID)，传 bytes32）
     /// @param amount    USDC 数量（6 位精度）
-    /// @param quoteHash 报价快照哈希（后端生成，承诺买家/金额/金库/有效期等）
+    /// @param quoteHash 报价承诺，必须等于 quoteCommitment(msg.sender, orderId, amount)
+    ///                  且由 owner 通过 registerQuote / registerQuoteHash 预先注册
     function buyPolicy(bytes32 orderId, uint256 amount, bytes32 quoteHash)
         external
         nonReentrant
@@ -121,19 +156,21 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
     {
         // 验证订单是否已处理
         require(!orderProcessed[orderId], "order already processed");
-        
-        // 验证并标准化金额
+
+        // 验证金额
         uint256 normalizedAmount = validateAndNormalizeAmount(amount);
-        
-        // 验证quoteHash有效性
+
+        // 修复：quoteHash 必须与本次 (买家, 订单号, 金额) 严格绑定，
+        // 防止盗用他人报价或改价支付
+        require(
+            quoteHash == quoteCommitment(msg.sender, orderId, normalizedAmount),
+            "quote hash not bound to this purchase"
+        );
         require(isValidQuoteHash(quoteHash), "invalid or expired quote hash");
-        
-        // 验证USDC余额和授权
-        require(USDC.balanceOf(msg.sender) >= amount, "insufficient USDC balance");
-        require(USDC.allowance(msg.sender, address(this)) >= amount, "insufficient USDC allowance");
-        
-        // 标记订单为已处理
+
+        // 标记订单为已处理，并作废该报价（一次性使用）
         orderProcessed[orderId] = true;
+        delete quoteHashExpiry[quoteHash];
         
         // 直接转入金库，不在合约囤资
         USDC.safeTransferFrom(msg.sender, treasury, normalizedAmount);
@@ -193,6 +230,6 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice 合约版本标识（便于前端/后端校验）
     function version() external pure returns (string memory) {
-        return "checkout-usdc/1.0.1";                  // ✅ 小版本号
+        return "checkout-usdc/1.1.0";                  // quoteHash 绑定 + 金额规则修复
     }
 }

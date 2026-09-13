@@ -61,11 +61,15 @@ export default function ordersRoutes(orderService: OrderService) {
     const addrRaw = (req.query.address || req.query.wallet || '') as string;
     const address = addrRaw.toString().toLowerCase();
     try {
-      const all = await orderService.listOrdersPersisted();
+      // 修复：地址缺失/非法时，原实现返回**全部用户**的订单（越权数据泄露）
       if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        const sorted = Array.isArray(all) ? all.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()) : [];
-        return res.json({ ok: true, orders: sorted });
+        return res.status(400).json({
+          ok: false,
+          code: 'INVALID_ADDRESS',
+          message: '缺少或非法的钱包地址参数 address'
+        });
       }
+      const all = await orderService.listOrdersPersisted();
       const list = all.filter(o => o.wallet.toLowerCase() === address);
       return res.json({ ok: true, orders: list });
     } catch (error) {
@@ -373,23 +377,95 @@ export default function ordersRoutes(orderService: OrderService) {
 
     try {
       const txHash = parsed.data.txHash;
+
+      if (!targetContract) {
+        return res.status(500).json({ ok: false, code: 'SERVER_CONFIG_MISSING', message: '未配置 CHECKOUT_CONTRACT_ADDRESS' });
+      }
+
+      // ── 修复：txHash 不可复用 ────────────────────────────────────────────
+      // 原实现没有唯一性校验，同一笔交易可以把无限多个订单标记为已支付。
+      const allOrders = await orderService.listOrdersPersisted();
+      const reused = allOrders.find(
+        (o: any) => o.id !== order.id && String(o.paymentTx || '').toLowerCase() === txHash.toLowerCase()
+      );
+      if (reused) {
+        return res.status(409).json({ ok: false, code: 'TX_ALREADY_USED', message: '该交易已用于其它订单' });
+      }
+
+      // RPC 自检：BASE_RPC 指向的链必须和 PAYMENT_CHAIN_ID 一致
+      const network = await provider.getNetwork();
+      if (String(network.chainId) !== expectedChainId) {
+        return res.status(500).json({ ok: false, code: 'RPC_CHAIN_MISMATCH', message: 'BASE_RPC 与 PAYMENT_CHAIN_ID 不一致' });
+      }
+
       const tx = await provider.getTransaction(txHash);
       if (!tx) {
         return res.status(400).json({ ok: false, code: 'TX_NOT_FOUND', message: '交易未找到' });
       }
-      const receipt = await provider.waitForTransaction(txHash, 1);
+      const receipt = await provider.getTransactionReceipt(txHash);
       if (!receipt || receipt.status !== 1) {
         return res.status(400).json({ ok: false, code: 'TX_FAILED', message: '交易未上链或失败' });
       }
-      const toAddr = (tx.to || '').toLowerCase();
-      if (!targetContract || toAddr !== targetContract) {
+
+      // 确认数不足时不落账，避免重组回滚
+      const minConfirmations = Number(process.env.CONFIRMATIONS || 3);
+      const confirmations = await receipt.confirmations();
+      if (confirmations < minConfirmations) {
+        return res.status(202).json({
+          ok: false,
+          code: 'TX_PENDING_CONFIRMATIONS',
+          message: `确认数不足（${confirmations}/${minConfirmations}），请稍后重试`
+        });
+      }
+
+      if ((tx.to || '').toLowerCase() !== targetContract) {
         return res.status(400).json({ ok: false, code: 'TX_TO_MISMATCH', message: '交易目标地址不匹配' });
       }
-      const network = await provider.getNetwork();
-      const networkChainId = String(network.chainId);
-      if (networkChainId !== expectedChainId) {
-        return res.status(400).json({ ok: false, code: 'CHAIN_MISMATCH', message: '链ID不匹配' });
+
+      // ── 修复：真正核验链上支付事件 ──────────────────────────────────────
+      // 原实现只检查 tx.to 和 RPC 链 ID，两者都与「这笔钱是不是这个订单付的」无关：
+      // 任何人拿任意一笔打到该合约的交易哈希，就能把任意订单标记为已支付。
+      // 这里解析 PremiumPaid 事件，逐项比对付款人与金额。
+      const checkoutIface = new ethers.Interface([
+        'event PremiumPaid(bytes32 indexed orderId, address indexed buyer, uint256 amount, bytes32 indexed quoteHash, address token, address treasury, uint256 chainId, uint256 timestamp)'
+      ]);
+
+      const expectedAmount = BigInt(Math.round(Number((order as any).premiumUSDC6d ?? 0)));
+      if (expectedAmount <= 0n) {
+        return res.status(500).json({ ok: false, code: 'ORDER_AMOUNT_MISSING', message: '订单保费金额缺失，无法核验' });
       }
+
+      let paidEvent: any = null;
+      for (const log of receipt.logs) {
+        if ((log.address || '').toLowerCase() !== targetContract) continue;
+        let parsedLog: any = null;
+        try {
+          parsedLog = checkoutIface.parseLog({ topics: [...log.topics], data: log.data });
+        } catch { continue; }
+        if (!parsedLog || parsedLog.name !== 'PremiumPaid') continue;
+        if (String(parsedLog.args.buyer).toLowerCase() !== String(order.wallet || '').toLowerCase()) continue;
+        if (BigInt(parsedLog.args.amount) !== expectedAmount) continue;
+        paidEvent = parsedLog;
+        break;
+      }
+
+      if (!paidEvent) {
+        return res.status(400).json({
+          ok: false,
+          code: 'PAYMENT_EVENT_MISMATCH',
+          message: '交易中未找到与本订单匹配的 PremiumPaid 事件（付款地址或金额不符）'
+        });
+      }
+
+      // 链上 orderId 同样不可被两个订单复用
+      const onchainOrderId = String(paidEvent.args.orderId).toLowerCase();
+      const dupOnchain = allOrders.find(
+        (o: any) => o.id !== order.id && String(o.onchainOrderId || '').toLowerCase() === onchainOrderId
+      );
+      if (dupOnchain) {
+        return res.status(409).json({ ok: false, code: 'ONCHAIN_ORDER_ID_REUSED', message: '链上订单号已被占用' });
+      }
+      (order as any).onchainOrderId = onchainOrderId;
 
       order.status = 'paid';
       order.paymentStatus = 'paid';

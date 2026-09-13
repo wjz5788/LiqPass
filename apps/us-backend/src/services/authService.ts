@@ -81,7 +81,15 @@ export default class AuthService {
   private db: any;
 
   constructor(options: AuthServiceOptions = {}) {
-    this.jwtSecret = options.jwtSecret ?? process.env.JWT_SECRET ?? 'dev-secret';
+    const envJwtSecret = (process.env.JWT_SECRET || '').trim();
+    const secret = options.jwtSecret ?? (envJwtSecret || null);
+    if (!secret) {
+      throw new Error('[config] 缺少 JWT_SECRET。请配置一个高熵随机字符串后再启动（禁止使用 dev-secret 之类的默认值）。');
+    }
+    if (secret.length < 32) {
+      throw new Error('[config] JWT_SECRET 长度不足 32 字符，强度不够，请更换。');
+    }
+    this.jwtSecret = secret;
     this.sessionDurationMs = options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS;
     this.db = dbManager.getDatabase();
   }

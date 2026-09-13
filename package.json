@@ -10,11 +10,11 @@
     "leverageguard-docs"
   ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter us-frontend dev\" \"pnpm --filter us-backend dev\"",
-    "build": "pnpm --filter us-frontend build && pnpm --filter us-backend build",
-    "test": "pnpm --filter us-frontend test && pnpm --filter us-backend test",
-    "lint": "pnpm --filter us-frontend lint && pnpm --filter us-backend lint",
-    "clean": "pnpm --filter us-frontend clean && pnpm --filter us-backend clean",
+    "dev": "concurrently \"pnpm --filter liqpass-frontend dev\" \"pnpm --filter us-backend dev\"",
+    "build": "pnpm --filter liqpass-frontend build && pnpm --filter us-backend build",
+    "test": "pnpm --filter liqpass-frontend test && pnpm --filter us-backend test",
+    "lint": "pnpm --filter liqpass-frontend lint && pnpm --filter us-backend lint",
+    "clean": "pnpm --filter liqpass-frontend clean && pnpm --filter us-backend clean",
     "docs:check-links": "node scripts/docs-update.js check-links",
     "docs:lint": "node scripts/docs-update.js lint",
     "docs:changelog": "node scripts/docs-update.js changelog",

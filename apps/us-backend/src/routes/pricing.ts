@@ -1,14 +1,17 @@
 import express from 'express';
 import { ethers } from 'ethers';
 import { z } from 'zod';
+import { lazyEnv } from '../utils/requireEnv.js';
+import requireAdminApiKey from '../middleware/requireAdminApiKey.js';
 
 const router = express.Router();
 
-// 私钥用于签名（生产环境应该从环境变量获取）
-const PRICER_PRIVATE_KEY = process.env.PRICER_PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+// 签名私钥：必须来自环境变量，缺失即报错（原先硬编码的是公开的 Hardhat 测试私钥）
+const getPricerPrivateKey = lazyEnv('PRICER_PRIVATE_KEY');
 
-// 合约地址（应该与前端一致）
-const POLICY_ADDR = process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '0xC423C34b57730Ba87FB74b99180663913a345D68';
+// 合约地址与链 ID：必须来自环境变量，避免测试网 / 主网串签
+const getPolicyAddr = lazyEnv('CHECKOUT_CONTRACT_ADDRESS', 'CHECKOUT_ADDR', 'POLICY_ADDR');
+const getChainId = () => Number(lazyEnv('PAYMENT_CHAIN_ID')());
 
 /**
  * POST /api/v1/pricing/quote
@@ -39,6 +42,8 @@ router.post('/quote', async (req, res) => {
 
     // 生成唯一ID
     const quoteId = ethers.hexlify(ethers.randomBytes(32));
+    const POLICY_ADDR = getPolicyAddr();
+    const CHAIN_ID = getChainId();
     const inputHash = ethers.keccak256(ethers.toUtf8Bytes(`${wallet}-${principal}-${leverage}-${Date.now()}`));
     
     // 设置过期时间（5分钟）
@@ -53,7 +58,7 @@ router.post('/quote', async (req, res) => {
       durationHours: durationHours || 24,
       quoteId,
       deadline: deadline.toString(),
-      chainId: '8453', // Base主网
+      chainId: String(CHAIN_ID),
       contractAddr: POLICY_ADDR,
       skuId: skuId || 101
     };
@@ -62,7 +67,7 @@ router.post('/quote', async (req, res) => {
     const domain = {
       name: 'LiqPass',
       version: '1',
-      chainId: 8453,
+      chainId: CHAIN_ID,
       verifyingContract: POLICY_ADDR
     };
 
@@ -82,7 +87,7 @@ router.post('/quote', async (req, res) => {
     };
 
     // 创建签名者
-    const signer = new ethers.Wallet(PRICER_PRIVATE_KEY);
+    const signer = new ethers.Wallet(getPricerPrivateKey());
     
     // 生成EIP-712签名
     const quoteSig = await signer.signTypedData(domain, types, quote);
@@ -106,21 +111,28 @@ export default router;
  */
 const quoteHashSchema = z.object({
   wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  amountUSDC: z.string().regex(/^\d+(\.\d+)?$/).optional(),
+  // 必填：报价必须绑定到具体订单与金额，否则等于签一张空白支票
+  orderId: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+  amountUSDC: z.string().regex(/^\d+(\.\d+)?$/),
   ttlSec: z.number().int().positive().max(3600).optional()
 });
 
-router.post('/quote-hash', async (req, res) => {
+// 该接口会用服务端 owner 私钥发起链上交易（消耗 gas），必须鉴权，
+// 否则任何人都能循环调用耗空 owner 钱包。
+router.post('/quote-hash', requireAdminApiKey, async (req, res) => {
   try {
     const parsed = quoteHashSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ ok: false, error: 'INVALID_REQUEST', issues: parsed.error.issues });
     }
-    const { wallet, amountUSDC, ttlSec } = parsed.data;
+    const { wallet, orderId, amountUSDC, ttlSec } = parsed.data;
 
     const rpc = process.env.BASE_RPC;
     const ownerPk = process.env.CHECKOUT_OWNER_PRIVATE_KEY || process.env.ISSUER_PRIVATE_KEY;
-    const checkoutAddr = process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '0xC423C34b57730Ba87FB74b99180663913a345D68';
+    const checkoutAddr = (process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '').trim();
+    if (!checkoutAddr) {
+      return res.status(500).json({ ok: false, error: 'SERVER_CONFIG_MISSING', hint: '需要配置 CHECKOUT_CONTRACT_ADDRESS' });
+    }
 
     if (!rpc || !ownerPk) {
       return res.status(500).json({ ok: false, error: 'SERVER_CONFIG_MISSING', hint: '需要配置 BASE_RPC 与 ISSUER_PRIVATE_KEY' });
@@ -130,6 +142,7 @@ router.post('/quote-hash', async (req, res) => {
     const signer = new ethers.Wallet(ownerPk, provider);
 
     const checkoutAbi = [
+      'function quoteCommitment(address buyer,bytes32 orderId,uint256 amount) pure returns (bytes32)',
       'function registerQuoteHash(bytes32 quoteHash,uint256 expiryTime) external',
       'function isValidQuoteHash(bytes32 quoteHash) view returns (bool)'
     ];
@@ -138,9 +151,16 @@ router.post('/quote-hash', async (req, res) => {
     const nowSec = Math.floor(Date.now() / 1000);
     const expiry = nowSec + (ttlSec ?? 600);
 
-    const salt = ethers.hexlify(ethers.randomBytes(16));
-    const amtStr = (amountUSDC ?? '').toString();
-    const quoteHash = ethers.keccak256(ethers.toUtf8Bytes(`${wallet.toLowerCase()}:${amtStr}:${salt}:${nowSec}`));
+    // 修复：原实现用随机 salt 生成一个与订单、买家、金额都无关的裸哈希。
+    // 合约只校验「是否注册过且未过期」，任何人都能从公开事件里抄走它，
+    // 换成自己的 orderId、改成任意金额去支付。现在改为链上同款承诺哈希。
+    const amount = ethers.parseUnits(amountUSDC, 6);
+    const quoteHash = ethers.keccak256(
+      ethers.AbiCoder.defaultAbiCoder().encode(
+        ['address', 'bytes32', 'uint256'],
+        [ethers.getAddress(wallet), orderId, amount]
+      )
+    );
 
     const tx = await checkout.registerQuoteHash(quoteHash, expiry);
     const receipt = await tx.wait();
