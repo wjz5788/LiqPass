@@ -124,4 +124,30 @@ await dbManager.waitForInitialization().catch(error => {
 });
 
 export const db = dbManager.getDatabase();
+
+/**
+ * 模块级事务包装器。
+ *
+ * 修复：contractListenerService.ts 和 routes/min.ts 都写成
+ * `import { withTransaction } from '../database/db.js'`，但这里从未导出过
+ * 同名函数 —— 编译报 TS2614，运行时是 `undefined is not a function`。
+ * DatabaseManager 上确实有一个同名方法，但它是同步的（better-sqlite3 的
+ * 事务无法跨 await），而两个调用点传的都是 async 函数：一旦回调返回 Promise，
+ * better-sqlite3 的 transaction() 会立刻提交，事务等于没生效。
+ *
+ * 这里改为显式 BEGIN / COMMIT / ROLLBACK，从而同时支持同步与异步回调。
+ * 注意：单连接、单进程下才成立，且不支持嵌套调用。
+ */
+export async function withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
+  db.run('BEGIN');
+  try {
+    const result = await fn();
+    db.run('COMMIT');
+    return result;
+  } catch (error) {
+    try { db.run('ROLLBACK'); } catch { /* 回滚失败时保留原始错误 */ }
+    throw error;
+  }
+}
+
 export default dbManager;

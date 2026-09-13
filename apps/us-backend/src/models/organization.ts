@@ -1,4 +1,4 @@
-import type { StatusState } from './status';
+import type { StatusState } from './status.js';
 
 /**
  * Describes an organization that can onboard exchange accounts.

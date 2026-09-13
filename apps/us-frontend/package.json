@@ -18,7 +18,8 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:ui": "playwright test --ui",
     "test:coverage": "npm run test:unit:coverage && npm run test:e2e",
-    "test:report": "playwright show-report"
+    "test:report": "playwright show-report",
+    "clean": "rm -rf dist node_modules/.vite"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",

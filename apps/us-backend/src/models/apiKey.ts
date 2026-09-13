@@ -1,4 +1,4 @@
-import type { StatusState } from './status';
+import type { StatusState } from './status.js';
 
 /**
  * API密钥状态枚举

@@ -1,4 +1,4 @@
-import type { StatusState } from './status';
+import type { StatusState } from './status.js';
 
 /**
  * Links a user to an organization with a specific role and status.

@@ -1,6 +1,6 @@
 import express from 'express';
-import { QuoteService } from '../services/quoteService';
-import { CreateQuoteRequest } from '../models/product';
+import { QuoteService } from '../services/quoteService.js';
+import { CreateQuoteRequest } from '../models/product.js';
 import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
 
 const router = express.Router();

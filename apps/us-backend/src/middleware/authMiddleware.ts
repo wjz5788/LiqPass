@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import AuthService, { AuthenticatedUser } from '../services/authService';
+import AuthService, { AuthenticatedUser } from '../services/authService.js';
 import { AuthenticationError, ERROR_CODES } from '../types/errors.js';
 
 export interface AuthInfo {

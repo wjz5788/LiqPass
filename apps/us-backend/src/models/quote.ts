@@ -1,4 +1,4 @@
-import { db } from '../database/db';
+import { db } from '../database/db.js';
 
 export interface Quote {
   id: string;
@@ -106,16 +106,10 @@ export class QuoteModel {
   }
 
   static async cleanupExpiredQuotes(): Promise<number> {
-    return new Promise((resolve, reject) => {
-      db.run(
-        'DELETE FROM quotes WHERE expires_at <= ?',
-        [new Date().toISOString()],
-        function(err) {
-          if (err) reject(err);
-          else resolve(this.changes);
-        }
-      );
-    });
+    // 修复：db 来自 better-sqlite3（同步 API），原代码按 node-sqlite3 的
+    // 回调风格调用，回调永远不会执行，Promise 永远 pending。
+    const info = db.run('DELETE FROM quotes WHERE expires_at <= ?', new Date().toISOString());
+    return info.changes;
   }
 
   static async getQuoteStats(productId: string): Promise<{

@@ -60,14 +60,12 @@ export abstract class BaseDAOImpl<T extends { id: string }> implements BaseDAO<T
   abstract update(id: string, updates: Partial<T>): T | undefined;
 
   delete(id: string): boolean {
+    // 修复：db 是 better-sqlite3（同步 API，run 直接返回 { changes }），
+    // 原代码按 node-sqlite3 的回调风格写，回调永远不会被调用，
+    // 且回调里的 this.changes 在 TS 下是隐式 any（TS2683）。
     const stmt = this.db.prepare(`DELETE FROM ${this.tableName} WHERE id = ?`);
-    let changes = 0;
-    stmt.run(id, function(err) {
-      if (!err) {
-        changes = this.changes;
-      }
-    });
-    return changes > 0;
+    const info = stmt.run(id);
+    return info.changes > 0;
   }
 
   count(filter?: Record<string, any>): number {

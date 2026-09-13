@@ -1,11 +1,22 @@
 import { randomUUID } from 'crypto';
-import dbManager from '../database/db.js';
+import { DatabaseManager } from '../database/db.js';
 import { VerificationResult, VerificationStatus } from '../types/index.js';
 
-export class VerificationService {
-  private dbManager: typeof dbManager;
+/**
+ * 修复：原代码把验证记录写在 `dbManager.verifications` 上，而 DatabaseManager
+ * 根本没有这个属性 —— 之所以没报错，是因为构造函数写成
+ * `constructor(dbManager: typeof dbManager)`，参数在自己的类型标注里自引用
+ * （TS2502），整个类型退化成 any，把后面所有错误一起吞掉了。
+ *
+ * 这里把类型修正为 DatabaseManager，并把这份内存态明确放到模块级 Map。
+ * 注意：进程重启即丢失，仅适用于当前的演示用途；要持久化需落到 SQLite 表。
+ */
+const verifications = new Map<string, VerificationResult>();
 
-  constructor(dbManager: typeof dbManager) {
+export class VerificationService {
+  private dbManager: DatabaseManager;
+
+  constructor(dbManager: DatabaseManager) {
     this.dbManager = dbManager;
   }
 
@@ -25,13 +36,13 @@ export class VerificationService {
       chainId: request.chainId,
       signature: request.signature,
       message: request.message,
-      status: 'pending' as VerificationStatus,
+      status: 'verifying' as VerificationStatus,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
     
     // 存储到数据库
-    this.dbManager.verifications.set(verificationId, verificationRecord);
+    verifications.set(verificationId, verificationRecord);
     
     // 模拟异步验证过程
     setTimeout(() => {
@@ -40,7 +51,7 @@ export class VerificationService {
     
     return {
       id: verificationId,
-      status: 'pending'
+      status: 'verifying'
     };
   }
 
@@ -49,7 +60,7 @@ export class VerificationService {
    * @param verificationId 验证ID
    */
   private async completeVerification(verificationId: string): Promise<void> {
-    const verification = this.dbManager.verifications.get(verificationId);
+    const verification = verifications.get(verificationId);
     
     if (!verification) {
       return;
@@ -59,16 +70,18 @@ export class VerificationService {
     const isValid = Math.random() > 0.3; // 70% 的概率验证通过
     
     // 更新验证记录
-    const updatedVerification = {
+    // 修复：'approved' / 'rejected' 不是 VerificationStatus 的成员，
+    // 合法值见 types/index.ts（verified / failed）
+    const updatedVerification: VerificationResult = {
       ...verification,
-      status: isValid ? 'approved' : 'rejected',
+      status: isValid ? 'verified' : 'failed',
       result: isValid,
       reason: isValid ? 'Verification successful' : 'Insufficient trading volume',
       updatedAt: new Date().toISOString()
     };
     
     // 存储更新后的记录
-    this.dbManager.verifications.set(verificationId, updatedVerification);
+    verifications.set(verificationId, updatedVerification);
   }
 
   /**
@@ -77,7 +90,7 @@ export class VerificationService {
    * @returns 验证结果
    */
   async getVerificationResult(verificationId: string): Promise<VerificationResult | null> {
-    const verification = this.dbManager.verifications.get(verificationId);
+    const verification = verifications.get(verificationId);
     
     if (!verification) {
       return null;
@@ -85,6 +98,7 @@ export class VerificationService {
     
     return {
       id: verification.id,
+      walletAddress: verification.walletAddress,
       status: verification.status,
       result: verification.result,
       reason: verification.reason,
@@ -102,7 +116,7 @@ export class VerificationService {
    */
   async getVerificationHistory(walletAddress: string, limit: number = 10, offset: number = 0): Promise<any[]> {
     // 获取所有验证记录
-    const allVerifications = Array.from(this.dbManager.verifications.values());
+    const allVerifications = Array.from(verifications.values());
     
     // 过滤指定钱包地址的记录
     const filteredVerifications = allVerifications.filter(v => v.walletAddress === walletAddress);

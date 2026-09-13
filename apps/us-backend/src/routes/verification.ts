@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { VerificationService } from '../services/verificationService.js';
-import dbManager from '../database/db.js';
+import dbManager, { DatabaseManager } from '../database/db.js';
 import { createApiKeyAuthMiddleware } from '../middleware/apiKeyAuth.js';
 import { ZodError } from 'zod';
 // 使用控制台日志代替应用级 logger，避免模块缺失导致启动失败
 
-export default function verificationRoutes(dbManager: typeof dbManager) {
+export default function verificationRoutes(dbManager: DatabaseManager) {
   const router = Router();
   const verificationService = new VerificationService(dbManager);
   const requireApiKey = createApiKeyAuthMiddleware(dbManager);

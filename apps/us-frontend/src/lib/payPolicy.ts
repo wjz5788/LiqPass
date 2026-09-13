@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import api from '../services/api.ts';
+import api from '../services/api';
 import {
   BASE_USDC_ADDRESS,
   CHECKOUT_CONTRACT_ADDRESS,

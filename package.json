@@ -19,7 +19,10 @@
     "docs:lint": "node scripts/docs-update.js lint",
     "docs:changelog": "node scripts/docs-update.js changelog",
     "docs:status": "node scripts/docs-update.js status",
-    "docs:full-check": "node scripts/docs-update.js full-check"
+    "docs:full-check": "node scripts/docs-update.js full-check",
+    "setup:env": "node apps/us-backend/scripts/setup-dev-env.mjs",
+    "typecheck": "pnpm --filter us-backend exec tsc --noEmit && pnpm --filter liqpass-frontend exec tsc --noEmit",
+    "verify": "pnpm typecheck && pnpm build"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^4.0.3",

@@ -3,8 +3,11 @@
 
 import { config } from 'dotenv';
 
-// 加载环境变量文件
-config({ path: '.env.local' });
+// 加载环境变量文件（与 src/loadEnv.ts 保持同一顺序，否则闸口和运行时看到的配置会不一致）
+const nodeEnv = process.env.NODE_ENV || 'development';
+for (const file of ['.env.local', `.env.${nodeEnv}`, '.env']) {
+  config({ path: file });
+}
 
 const errors = [];
 const warnings = [];

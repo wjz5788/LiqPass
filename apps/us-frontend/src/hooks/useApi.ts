@@ -4,9 +4,9 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import { useLoading } from '../contexts/LoadingContext.tsx';
-import { api, ApiError, safeApiCall } from '../services/api.ts';
-import { useToast } from '../contexts/ToastContext.tsx';
+import { useLoading } from '../contexts/LoadingContext';
+import { api, ApiError, safeApiCall } from '../services/api';
+import { useToast } from '../contexts/ToastContext';
 
 // API Hook配置接口
 interface UseApiOptions {

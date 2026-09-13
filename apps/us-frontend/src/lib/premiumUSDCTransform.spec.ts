@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePremiumUSDCFields } from './premiumUSDCTransform.ts';
+import { normalizePremiumUSDCFields } from './premiumUSDCTransform';
 
 describe('normalizePremiumUSDCFields', () => {
   it('should convert premiumUSDC fields recursively', () => {
