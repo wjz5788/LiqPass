@@ -24,7 +24,9 @@ interface LoadingContextValue {
   componentLoading: Map<string, boolean>;
   
   // 操作方法
-  showLoading: (options?: LoadingState) => string;
+  // 修复：调用方传的都是 { type, message } 这类片段，isLoading 由实现内部置为 true，
+  // 原签名要求完整的 LoadingState，默认值 {} 直接类型报错（TS2741）。
+  showLoading: (options?: Partial<LoadingState>) => string;
   hideLoading: (id?: string) => void;
   updateLoading: (id: string, updates: Partial<LoadingState>) => void;
   showComponentLoading: (componentId: string, message?: string) => void;
@@ -59,7 +61,7 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({
   const nextIdRef = useRef(1);
 
   // 显示加载状态
-  const showLoading = useCallback((options: LoadingState = {}): string => {
+  const showLoading = useCallback((options: Partial<LoadingState> = {}): string => {
     const id = options.id || `loading-${nextIdRef.current++}`;
     const loadingState: LoadingState = {
       isLoading: true,

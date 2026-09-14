@@ -86,3 +86,6 @@ window.fetch = (async (input: FetchInput, init?: RequestInit): Promise<Response>
   return _fetch(input, init);
 }) as any;
 
+// 该文件通过 `await import()` 动态加载，必须是 ES 模块；
+// 原先没有任何 import/export，TS 视其为全局脚本（TS2306）。
+export {};

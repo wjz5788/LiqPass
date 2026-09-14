@@ -1,12 +1,14 @@
 import express from 'express';
 import { z } from 'zod';
-import { ethers } from 'ethers';
 import OrderService, { OrderError } from '../services/orderService.js';
 import AuthService from '../services/authService.js';
 import { EnhancedAuthMiddleware } from '../middleware/enhancedAuth.js';
 import { createApiKeyAuthInstance } from '../middleware/apiKeyAuth.js';
 import { appendOrder } from '../database/fileLedger.js';
 import dbManager, { db } from '../database/db.js';
+import { verifyPremiumPaid, PaymentVerifyError } from '../services/paymentVerification.js';
+import { getAuthWallet, assertWalletMatches } from '../middleware/walletOwnership.js';
+import type { RequireAuthMiddleware } from '../middleware/authMiddleware.js';
 import { v4 as uuid } from 'uuid';
 // 注：移除对数据库的幂等性快照依赖，改由服务层与文件账本保证一致性
 
@@ -36,7 +38,7 @@ const toFixedString = (value: number, fractionDigits: number) =>
 
 // 幂等性快照改由 OrderService 内部索引与文件账本保障，路由层不再写入独立快照
 
-export default function ordersRoutes(orderService: OrderService) {
+export default function ordersRoutes(orderService: OrderService, requireAuth: RequireAuthMiddleware) {
   const router = express.Router();
   const apiKeyAuth = createApiKeyAuthInstance(dbManager);
   const enhancedAuth = new EnhancedAuthMiddleware(new AuthService(), apiKeyAuth);
@@ -57,16 +59,16 @@ export default function ordersRoutes(orderService: OrderService) {
     return res.json({ ok: true, orders });
   });
 
-  router.get('/orders/my', async (req, res) => {
-    const addrRaw = (req.query.address || req.query.wallet || '') as string;
-    const address = addrRaw.toString().toLowerCase();
+  // 修复：此前该接口不做任何身份校验，任意填一个钱包地址就能读到对方的全部订单。
+  // 现在以登录会话中的钱包为准，忽略客户端传入的 address/wallet 参数。
+  router.get('/orders/my', requireAuth, async (req, res) => {
+    const address = getAuthWallet(req);
     try {
-      // 修复：地址缺失/非法时，原实现返回**全部用户**的订单（越权数据泄露）
-      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        return res.status(400).json({
+      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        return res.status(401).json({
           ok: false,
-          code: 'INVALID_ADDRESS',
-          message: '缺少或非法的钱包地址参数 address'
+          code: 'UNAUTHORIZED',
+          message: '当前会话没有绑定钱包地址'
         });
       }
       const all = await orderService.listOrdersPersisted();
@@ -227,27 +229,56 @@ export default function ordersRoutes(orderService: OrderService) {
   });
 
   // 最小创建：用于链上支付前占位，避免 /submit-tx 找不到订单
-  router.post('/orders/minimal-create', async (req, res) => {
+  router.post('/orders/minimal-create', requireAuth, async (req, res) => {
     try {
-      const { orderId, wallet, premiumUSDC } = req.body as any;
+      // ── 修复 ────────────────────────────────────────────────────────────
+      // 原实现无鉴权、无链上核验，保费由客户端申报，principal/payout 一律写 0：
+      // 任何人都能凭空为任意钱包造订单，金额随便填。
+      // 现在要求必须带上已确认的链上交易，并由服务端核验
+      // PremiumPaid(买家, 金额) 后才落库；保费以链上实际支付金额为准。
+      const { orderId, wallet, txHash, principal, leverage } = req.body as any;
       const id = String(orderId || '').trim();
       const w = String(wallet || '').trim().toLowerCase();
-      const premium = Number(premiumUSDC);
+      const tx = String(txHash || '').trim();
+
       if (!/^ord_[a-f0-9\-]{36}$/.test(id) && !/^0x[0-9a-fA-F]{64}$/.test(id) && id.length < 16) {
         return res.status(400).json({ ok: false, code: 'INVALID_ORDER_ID', message: '订单ID无效' });
       }
       if (!/^0x[a-fA-F0-9]{40}$/.test(w)) {
         return res.status(400).json({ ok: false, code: 'INVALID_WALLET', message: '钱包地址无效' });
       }
-      if (!Number.isFinite(premium) || premium <= 0) {
-        return res.status(400).json({ ok: false, code: 'INVALID_PREMIUM', message: '保费金额无效' });
+      // 只能为自己的钱包建单
+      if (!assertWalletMatches(req, res, w)) return;
+      if (!/^0x[0-9a-fA-F]{64}$/.test(tx)) {
+        return res.status(400).json({ ok: false, code: 'INVALID_TX_HASH', message: '缺少或非法的支付交易哈希' });
       }
+
       const exists = db.get(`SELECT id FROM orders WHERE id = ? LIMIT 1`, id) as any;
       if (exists) {
         return res.json({ ok: true, created: false });
       }
+
+      // 同一笔交易不可用于多个订单
+      const txUsed = db.get(`SELECT id FROM orders WHERE payment_tx_hash = ? LIMIT 1`, tx) as any;
+      if (txUsed) {
+        return res.status(409).json({ ok: false, code: 'TX_ALREADY_USED', message: '该交易已用于其它订单' });
+      }
+
+      let verified;
+      try {
+        verified = await verifyPremiumPaid({ txHash: tx, expectedBuyer: w });
+      } catch (err: any) {
+        if (err instanceof PaymentVerifyError) {
+          return res.status(err.httpStatus).json({ ok: false, code: err.code, message: err.message });
+        }
+        throw err;
+      }
+
       const nowIso = new Date().toISOString();
-      const premium6d = Math.round(premium * 1_000_000);
+      // 以链上实际支付金额为准，不接受客户端申报
+      const premium6d = Number(verified.amount6d);
+      const principalNum = Math.max(0, Math.round(Number(principal) || 0));
+      const leverageNum = Math.max(0, Math.round(Number(leverage) || 0));
       db.run(
         `INSERT INTO orders (
           id, user_id, wallet_address, product_id, principal_usdc, leverage,
@@ -258,12 +289,12 @@ export default function ordersRoutes(orderService: OrderService) {
         'user-id-placeholder',
         w,
         'sku_24h_liq',
-        0,
-        0,
+        principalNum,
+        leverageNum,
         premium6d,
-        0,
+        0, // payout_usdc：本最小化路径不承诺赔付额，理赔时按产品规则另行计算
         24,
-        'pending',
+        'paid',
         null,
         nowIso,
         nowIso,
@@ -355,7 +386,7 @@ export default function ordersRoutes(orderService: OrderService) {
     txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
   });
 
-  router.post('/orders/:orderId/submit-tx', async (req, res) => {
+  router.post('/orders/:orderId/submit-tx', requireAuth, async (req, res) => {
     const { orderId } = req.params;
     const parsed = submitSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -366,24 +397,17 @@ export default function ordersRoutes(orderService: OrderService) {
     if (!order) {
       return res.status(404).json({ ok: false, code: 'ORDER_NOT_FOUND', message: '订单不存在' });
     }
+    // 只有订单归属的钱包本人可以提交支付凭证
+    if (!assertWalletMatches(req, res, order.wallet)) return;
+
     if (order.status === 'paid') {
       return res.json({ ok: true, alreadyPaid: true, order });
     }
 
-    const rpc = (process.env.BASE_RPC || 'https://mainnet.base.org').toString();
-    const provider = new ethers.JsonRpcProvider(rpc);
-    const targetContract = (process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '').toLowerCase();
-    const expectedChainId = String(process.env.PAYMENT_CHAIN_ID || '8453');
-
     try {
       const txHash = parsed.data.txHash;
 
-      if (!targetContract) {
-        return res.status(500).json({ ok: false, code: 'SERVER_CONFIG_MISSING', message: '未配置 CHECKOUT_CONTRACT_ADDRESS' });
-      }
-
-      // ── 修复：txHash 不可复用 ────────────────────────────────────────────
-      // 原实现没有唯一性校验，同一笔交易可以把无限多个订单标记为已支付。
+      // 同一笔 txHash 不可用于多个订单
       const allOrders = await orderService.listOrdersPersisted();
       const reused = allOrders.find(
         (o: any) => o.id !== order.id && String(o.paymentTx || '').toLowerCase() === txHash.toLowerCase()
@@ -392,86 +416,60 @@ export default function ordersRoutes(orderService: OrderService) {
         return res.status(409).json({ ok: false, code: 'TX_ALREADY_USED', message: '该交易已用于其它订单' });
       }
 
-      // RPC 自检：BASE_RPC 指向的链必须和 PAYMENT_CHAIN_ID 一致
-      const network = await provider.getNetwork();
-      if (String(network.chainId) !== expectedChainId) {
-        return res.status(500).json({ ok: false, code: 'RPC_CHAIN_MISMATCH', message: 'BASE_RPC 与 PAYMENT_CHAIN_ID 不一致' });
-      }
-
-      const tx = await provider.getTransaction(txHash);
-      if (!tx) {
-        return res.status(400).json({ ok: false, code: 'TX_NOT_FOUND', message: '交易未找到' });
-      }
-      const receipt = await provider.getTransactionReceipt(txHash);
-      if (!receipt || receipt.status !== 1) {
-        return res.status(400).json({ ok: false, code: 'TX_FAILED', message: '交易未上链或失败' });
-      }
-
-      // 确认数不足时不落账，避免重组回滚
-      const minConfirmations = Number(process.env.CONFIRMATIONS || 3);
-      const confirmations = await receipt.confirmations();
-      if (confirmations < minConfirmations) {
-        return res.status(202).json({
-          ok: false,
-          code: 'TX_PENDING_CONFIRMATIONS',
-          message: `确认数不足（${confirmations}/${minConfirmations}），请稍后重试`
-        });
-      }
-
-      if ((tx.to || '').toLowerCase() !== targetContract) {
-        return res.status(400).json({ ok: false, code: 'TX_TO_MISMATCH', message: '交易目标地址不匹配' });
-      }
-
-      // ── 修复：真正核验链上支付事件 ──────────────────────────────────────
-      // 原实现只检查 tx.to 和 RPC 链 ID，两者都与「这笔钱是不是这个订单付的」无关：
-      // 任何人拿任意一笔打到该合约的交易哈希，就能把任意订单标记为已支付。
-      // 这里解析 PremiumPaid 事件，逐项比对付款人与金额。
-      const checkoutIface = new ethers.Interface([
-        'event PremiumPaid(bytes32 indexed orderId, address indexed buyer, uint256 amount, bytes32 indexed quoteHash, address token, address treasury, uint256 chainId, uint256 timestamp)'
-      ]);
-
       const expectedAmount = BigInt(Math.round(Number((order as any).premiumUSDC6d ?? 0)));
       if (expectedAmount <= 0n) {
         return res.status(500).json({ ok: false, code: 'ORDER_AMOUNT_MISSING', message: '订单保费金额缺失，无法核验' });
       }
 
-      let paidEvent: any = null;
-      for (const log of receipt.logs) {
-        if ((log.address || '').toLowerCase() !== targetContract) continue;
-        let parsedLog: any = null;
-        try {
-          parsedLog = checkoutIface.parseLog({ topics: [...log.topics], data: log.data });
-        } catch { continue; }
-        if (!parsedLog || parsedLog.name !== 'PremiumPaid') continue;
-        if (String(parsedLog.args.buyer).toLowerCase() !== String(order.wallet || '').toLowerCase()) continue;
-        if (BigInt(parsedLog.args.amount) !== expectedAmount) continue;
-        paidEvent = parsedLog;
-        break;
-      }
-
-      if (!paidEvent) {
-        return res.status(400).json({
-          ok: false,
-          code: 'PAYMENT_EVENT_MISMATCH',
-          message: '交易中未找到与本订单匹配的 PremiumPaid 事件（付款地址或金额不符）'
+      // 链上核验：PremiumPaid 事件的付款人与金额必须与订单一致
+      // （原实现只比对 tx.to 和 RPC 链 ID，任何人拿任意一笔打到合约的交易哈希
+      //   就能把任意订单标记为已支付）
+      let verified;
+      try {
+        verified = await verifyPremiumPaid({
+          txHash,
+          expectedBuyer: String(order.wallet || ''),
+          expectedAmount6d: expectedAmount
         });
+      } catch (err: any) {
+        if (err instanceof PaymentVerifyError) {
+          return res.status(err.httpStatus).json({ ok: false, code: err.code, message: err.message });
+        }
+        throw err;
       }
 
       // 链上 orderId 同样不可被两个订单复用
-      const onchainOrderId = String(paidEvent.args.orderId).toLowerCase();
       const dupOnchain = allOrders.find(
-        (o: any) => o.id !== order.id && String(o.onchainOrderId || '').toLowerCase() === onchainOrderId
+        (o: any) => o.id !== order.id &&
+          String(o.onchainOrderId || '').toLowerCase() === verified.onchainOrderId
       );
       if (dupOnchain) {
         return res.status(409).json({ ok: false, code: 'ONCHAIN_ORDER_ID_REUSED', message: '链上订单号已被占用' });
       }
-      (order as any).onchainOrderId = onchainOrderId;
+      (order as any).onchainOrderId = verified.onchainOrderId;
 
       order.status = 'paid';
       order.paymentStatus = 'paid';
       order.paymentTx = txHash;
       order.updatedAt = new Date().toISOString();
       await appendOrder(order);
+      // 修复：支付状态原先只写进文件账本，SQL 里的 orders 行永远停留在 pending，
+      // 导致任何基于 SQL 的查询和对账都看不到已支付订单。
+      try {
+        db.run(
+          `UPDATE orders
+             SET status = 'paid', payment_tx_hash = ?, payment_block_number = ?,
+                 paid_at = ?, updated_at = ?
+           WHERE id = ?`,
+          txHash,
+          verified.blockNumber,
+          order.updatedAt,
+          order.updatedAt,
+          order.id
+        );
+      } catch (e) {
+        console.warn('更新订单支付状态到 SQL 失败（文件账本已记录）:', e);
+      }
       try {
         const existing = db.get(`SELECT id FROM claims WHERE order_id = ? LIMIT 1`, order.id);
         if (!existing) {

@@ -1,0 +1,2546 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..fb06ad3
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,59 @@
++name: CI
++
++on:
++  push:
++    branches: [main, master]
++  pull_request:
++
++jobs:
++  verify:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: pnpm/action-setup@v4
++        with:
++          version: 9
++
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 20
++          cache: pnpm
++
++      - name: Install
++        run: pnpm install --frozen-lockfile
++
++      - name: Typecheck
++        run: pnpm typecheck
++
++      - name: Build
++        run: pnpm build
++
++      - name: Unit tests
++        run: pnpm --filter us-backend test --run
++        env:
++          NODE_ENV: test
++
++  secret-scan:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++
++      - name: 阻止提交真实密钥
++        run: |
++          set -e
++          # 任何被版本控制的 .env（除 .example / .sample 模板）都不该存在
++          bad=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '\.(example|sample)$' || true)
++          if [ -n "$bad" ]; then
++            echo "❌ 仓库中存在不应提交的环境变量文件:"; echo "$bad"; exit 1
++          fi
++          # 硬编码私钥（0x + 64 hex，排除全零占位符）
++          hits=$(git grep -nIE '0x[0-9a-fA-F]{64}' -- \
++                   ':!*.lock' ':!pnpm-lock.yaml' ':!package-lock.json' ':!*.json' ':!*.md' \
++                 | grep -vE '0x0{64}' || true)
++          if [ -n "$hits" ]; then
++            echo "❌ 疑似硬编码私钥:"; echo "$hits"; exit 1
++          fi
++          echo "✅ 未发现明文密钥"
+diff --git a/.gitignore b/.gitignore
+index 0a66c30..e5b5d5f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,12 +11,17 @@ build/
+ *.tgz
+ *.tar.gz
+ 
+-# Environment variables
++# Environment variables —— 只允许提交 *.example / *.sample 模板
+ .env
+-.env.local
+-.env.development.local
+-.env.test.local
+-.env.production.local
++.env.*
++!.env.example
++!.env.sample
++*/.env
++*/.env.*
++**/.env
++**/.env.*
++!**/.env.example
++!**/.env.sample
+ 
+ # Logs
+ *.log
+@@ -71,17 +76,23 @@ ENV/
+ 
+ # Database
+ *.db
++*.db-shm
++*.db-wal
+ *.sqlite
++*.sqlite-shm
++*.sqlite-wal
+ *.sqlite3
+ 
++# Python 虚拟环境（仓库里误提交了 apps/jp-verify/.venv311，约 26MB / 2000+ 文件）
++.venv*/
++**/.venv*/
++
+ # Cache
+ .cache/
+ .parcel-cache/
+ 
+-# Test files
+-*.test.js
+-*.test.ts
+-!/apps/us-backend/test/*.test.ts
++# 注意：这里原本 ignore 掉了全部 *.test.js / *.test.ts，
++# 等于把整个测试套件排除在版本库之外。测试代码必须入库。
+ 
+ # Documentation
+ _site/
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+new file mode 100644
+index 0000000..4c16043
+--- /dev/null
++++ b/RUNBOOK.md
+@@ -0,0 +1,228 @@
++# LiqPass 本地运行手册
++
++从零把这套东西跑起来的完整步骤。**先读最后一节"已知仍不可用的部分"**，避免在死路上浪费时间。
++
++---
++
++## 0. 前置：密钥轮换（如果还没做）
++
++仓库历史里有过真实主网私钥。在做任何部署之前：
++
++- `0x32a13b8ac717C793e0dd3DA4c683409626bD17A9`（原 `PRICER_PRIVATE_KEY`）
++- `0x00195EcF4FF21aB985b13FC741Cdf276C71D88A1`（原 `ISSUER_PRIVATE_KEY`，同时是 `PAYMENT_VAULT_ADDRESS`）
++
++资产转走 → 合约 owner/treasury 换掉 → `git filter-repo` 清历史 → force push。
++细节见 `AUDIT_REPORT.md` 第 1 节。
++
++---
++
++## 1. 环境要求
++
++```bash
++node -v     # 需要 >= 20
++pnpm -v     # 需要 >= 8，没有就 npm i -g pnpm
++```
++
++`better-sqlite3` 是原生模块，需要能编译：macOS 装 Xcode Command Line Tools，Linux 装 `build-essential` + `python3`。
++
++---
++
++## 2. 安装依赖
++
++```bash
++cd LiqPass-main
++pnpm install
++```
++
++> 根 `package.json` 里的 `pnpm --filter` 脚本原先全部写错了包名（`us-frontend` 实际叫
++> `liqpass-frontend`），已修正；`pnpm-workspace.yaml` 原先漏了 `packages/*`，已补上。
++
++---
++
++## 3. 生成本地环境变量
++
++```bash
++pnpm setup:env
++```
++
++在 `apps/us-backend/.env.local` 生成一份随机密钥配置（权限 600，已被 `.gitignore` 排除）。
++每次生成的 `JWT_SECRET` / `ADMIN_API_KEY` / 两把私钥都是新的随机值。
++
++前端：
++
++```bash
++cp apps/us-frontend/.env.example apps/us-frontend/.env.local
++```
++
++> 生成的 `CHECKOUT_CONTRACT_ADDRESS` / `PAYMENT_VAULT_ADDRESS` / `USDC_ADDRESS` 是随机占位值，
++> 只为让启动校验通过。部署完合约后必须替换成真实地址，否则支付相关接口全部无意义。
++
++---
++
++## 4. 验证能编译
++
++```bash
++pnpm typecheck      # 两个包分别 tsc --noEmit
++pnpm build          # 前端 vite build + 后端 tsc
++```
++
++**这一步是本次改动唯一没被验证过的环节** —— 审计环境连不上 npm registry，
++装不了依赖，所以所有类型检查都是在缺失第三方类型的情况下做的。
++如果这里报错，把错误贴回来。
++
++---
++
++## 5. 启动
++
++```bash
++pnpm dev
++```
++
++- 后端 `http://127.0.0.1:3002`
++- 前端 `http://localhost:5173`
++
++单独启：
++
++```bash
++pnpm --filter us-backend dev
++pnpm --filter liqpass-frontend dev
++```
++
++冒烟测试：
++
++```bash
++curl -s http://127.0.0.1:3002/api/v1/health | jq
++```
++
++启动时应当能看到 `🔧 已加载环境变量文件: .env.local`。
++**看不到这行就说明环境变量没进来** —— 参见下面的说明。
++
++> 原来的 `server.ts` 把 `dotenv.config()` 写在模块体里，而 `import app from './app.js'`
++> 在它前面。ESM 会先把 import 全部求值完，所以 app.ts（连同 AuthService、
++> 数据库初始化）在环境变量加载之前就跑完了 —— `.env` 里的配置一个都读不到。
++> 现在改成 `import './loadEnv.js'` 放在首位。
++
++---
++
++## 6. 合约
++
++```bash
++cd contracts
++cp .env.example .env        # 填入你自己的部署私钥和 BASESCAN_API_KEY
++npx hardhat compile
++```
++
++⚠️ 合约的改动（`quoteHash` 绑定买家/订单/金额、金额规则改为区间校验）
++**不会影响已部署在 `0xc423c3…d68` 的那份**。需要重新部署，然后：
++
++1. 更新后端 `CHECKOUT_CONTRACT_ADDRESS` 和前端 `VITE_CHECKOUT_CONTRACT_ADDRESS`
++2. 重新导出 ABI 到 `packages/abi/`（`isValidAmount` 和
++   `validateAndNormalizeAmount` 已从 `pure` 改为 `view`，ABI 变了）
++3. 报价流程改为：后端 `POST /api/v1/pricing/quote-hash`（需要 `X-Admin-Api-Key`）
++   传 `wallet` + `orderId` + `amountUSDC`，返回绑定好的 `quoteHash`
++
++构造函数原先无条件 `require(usdc_ == BASE_USDC)`，把合约钉死在 Base 主网 ——
++任何测试网、本地链都部署不了，也就没法在上主网前跑通一次完整流程。
++现在只在 `block.chainid == 8453` 时才强制校验官方 USDC 地址，其它链可传入自己的
++MockUSDC。
++
++---
++
++## 已知仍不可用的部分
++
++**1. 链上 `orderId` 与后端订单号没有关联**
++
++`payPolicy.ts` 用 `ethers.id(地址:时间戳:随机数)` 现编一个 `orderId`，后端订单是另一套 ID。
++支付核验只能靠「付款人 + 金额」匹配，同一用户同金额连续下两单时会有歧义。
++建议改成后端创建订单时下发 `bytes32 orderId`，前端原样传给 `buyPolicy`。
++
++**2. 半个后端是死代码**
++
++从 `server.ts` 出发能到达的只有 39 个文件，另外 36 个（含 `adapters/`、`models/`、
++`transparencyService`、`contractListenerService`、`verification*`）没有任何引用。
++之前绝大多数编译错误都出在这批文件里。要么接上，要么删掉。
++
++**3. 用浮点数算钱**
++
++保费与赔付一路是 `Math.round(principal * ratio * 1e6)`。金额建议全程 BigInt。
++
++**4. `minimal-create` 这条路径不记录赔付额**
++
++它写入 `payout_usdc = 0`，理赔时得另行按产品规则计算。正式下单应该走
++`POST /orders`（`createOrder`，服务端算保费和赔付），`minimal-create` 只适合演示。
++
++---
++
++## 鉴权模型（本轮接上）
++
++仓库里本来就有完整的钱包签名登录（`POST /api/v1/auth/wallet/nonce` →
++`/auth/wallet/verify`，配合 `wallet_login_challenges` 表），`authService.validateSession`
++也强制 `loginType === 'wallet'`。只是订单相关接口一直没接上去。现在按常规做法接好了：
++
++| 接口 | 现在的要求 |
++|---|---|
++| `GET /orders/my` | 需登录；**以会话里的钱包为准**，忽略客户端传入的 `address` 参数 |
++| `POST /orders/:id/submit-tx` | 需登录 + 调用者钱包必须等于 `order.wallet` |
++| `POST /orders/minimal-create` | 需登录 + 只能为自己的钱包建单 + 必须带已确认的 `txHash` |
++| `POST /pricing/quote-hash` | 需 `X-Admin-Api-Key`（会花 owner 的 gas） |
++| `GET /orders` | 需 `X-API-Key`（管理员全量列表） |
++
++归属校验集中在 `src/middleware/walletOwnership.ts`：`getAuthWallet(req)` 取
++`req.auth.profile.walletAddress`，`assertWalletMatches` 不匹配时返回 403（且不透露
++订单是否存在）。
++
++前端相应改动：`payPolicy.ts` 与 `Payment.tsx` 原先都用裸 `fetch` 不带任何凭证，
++已改走 `api` 客户端（`requireAuth: true`，自动附上 `Authorization`）。
++`Payment.tsx` 原先把两个调用都包在 `try{}catch{}` 里静默吞掉 —— 后端全部拒绝时
++用户依然看到「支付完成」，现在失败会如实报错。
++
++**所以：购买流程现在要求先完成钱包登录。** 前端如果还有未接登录态的入口，
++会收到 401，需要引导用户先走 `/auth/wallet/nonce` + `/auth/wallet/verify`。
++
++---
++
++## 本轮已解决（此前列在本节里的）
++
++- **两套互不兼容的 `buyPolicy` ABI** —— 查清了：`Products.tsx` 里那份 7 参数的
++  `POLICY_ABI` 和 `ERC20_ABI` 从未被引用，实际支付走的是 `lib/payPolicy.ts` 的
++  `buyPolicy(bytes32,uint256,bytes32)`。已删除死常量，不存在两套路径。
++- **`orders` 表冲突** —— 已定位为根因并修复，见下节。
++- **支付状态不落 SQL** —— `submit-tx` 现在会 `UPDATE orders SET status='paid', payment_tx_hash=...`。
++- **两个 sqlite 驱动** —— us-backend 的 `sqlite3` 依赖已移除（实际驱动是
++  better-sqlite3），并补上了 `@types/better-sqlite3`。
++- **没有 CI** —— 已加 `.github/workflows/ci.yml`：typecheck + build + 单测，
++  外加一个密钥扫描 job（拦截被提交的 `.env` 和硬编码私钥）。
++- **`submit-tx` 无鉴权 / `GET /orders/my` 不验证地址归属** —— 已接上钱包登录，
++  见上面「鉴权模型」一节。
++- **第二条支付路径 `payPolicyWithWallet`** —— 和 `payPolicy` 一样会在拿不到后端
++  报价时本地伪造 quoteHash（必定 revert，但用户已付掉 approve 的 gas），已一并修掉。
++
++---
++
++## ⚠️ 数据库需要重建
++
++这是本轮最重要的发现：**`orders` 表此前建错了，应用层对它的每一次读写都会失败。**
++
++`migrationManager.ts` 里的迁移顺序把 `001_create_contract_events.sql` 排在最前，
++而它有一句 `CREATE TABLE IF NOT EXISTS orders`，建出来的是链上监听子系统的表结构
++（`id` 自增、`order_id`、`buyer_address`、`amount`）。之后 `002_verify_schema.sql`
++和 `010_persist_memory_tables.sql` 里的同名建表因为 `IF NOT EXISTS` 全部静默跳过 ——
++包括应用层真正需要的那份（`id TEXT PRIMARY KEY`、`wallet_address`、`premium_usdc`…）。
++
++结果就是 `orderServiceDb`、`orderDAO`、`minimal-create` 对 `orders` 的每一次
++INSERT/SELECT 都会 `no such column`。这大概也是为什么订单要额外维护一份文件账本。
++
++已做的处理：
++
++- `001_create_contract_events.sql` 的表改名为 `contract_orders`
++- `002_verify_schema.sql` 的表改名为 `order_verifications`（它存的是订单验证记录，同名不同义；没有任何代码读写它）
++- `orders` 交回 `010_persist_memory_tables.sql`，并补上 `payment_tx_hash` / `payment_block_number`
++
++**因此现有的 .db 文件必须删掉重建**（反正里面的 `orders` 本来就是不可用的）：
++
++```bash
++rm -f apps/us-backend/data/*.db apps/us-backend/*.sqlite
++pnpm --filter us-backend dev     # 启动时自动重跑迁移
++```
++
++如果线上库里有真实数据，先备份，再人工核对 `contract_orders` 与新 `orders` 的对应关系。
+diff --git a/apps/us-backend/package.json b/apps/us-backend/package.json
+index 6211f7c..7ace6d1 100644
+--- a/apps/us-backend/package.json
++++ b/apps/us-backend/package.json
+@@ -11,7 +11,8 @@
+     "start": "node dist/server.js",
+     "env:check": "node scripts/envCheck.mjs",
+     "test": "vitest",
+-    "test:watch": "vitest --watch"
++    "test:watch": "vitest --watch",
++    "clean": "rm -rf dist"
+   },
+   "dependencies": {
+     "axios": "^1.6.0",
+@@ -30,7 +31,6 @@
+     "pino": "^8.17.1",
+     "pino-http": "^9.0.0",
+     "pino-pretty": "^10.3.1",
+-    "sqlite3": "^5.1.7",
+     "swagger-ui-express": "^5.0.1",
+     "uuid": "^9.0.1",
+     "yamljs": "^0.3.0",
+@@ -38,6 +38,7 @@
+   },
+   "devDependencies": {
+     "@types/bcryptjs": "^2.4.6",
++    "@types/better-sqlite3": "^7.6.9",
+     "@types/compression": "^1.7.5",
+     "@types/cors": "^2.8.17",
+     "@types/express": "^4.17.21",
+diff --git a/apps/us-backend/scripts/envCheck.mjs b/apps/us-backend/scripts/envCheck.mjs
+index 808c6ff..26dc1b8 100644
+--- a/apps/us-backend/scripts/envCheck.mjs
++++ b/apps/us-backend/scripts/envCheck.mjs
+@@ -3,8 +3,11 @@
+ 
+ import { config } from 'dotenv';
+ 
+-// 加载环境变量文件
+-config({ path: '.env.local' });
++// 加载环境变量文件（与 src/loadEnv.ts 保持同一顺序，否则闸口和运行时看到的配置会不一致）
++const nodeEnv = process.env.NODE_ENV || 'development';
++for (const file of ['.env.local', `.env.${nodeEnv}`, '.env']) {
++  config({ path: file });
++}
+ 
+ const errors = [];
+ const warnings = [];
+diff --git a/apps/us-backend/scripts/setup-dev-env.mjs b/apps/us-backend/scripts/setup-dev-env.mjs
+new file mode 100644
+index 0000000..c5d653f
+--- /dev/null
++++ b/apps/us-backend/scripts/setup-dev-env.mjs
+@@ -0,0 +1,74 @@
++#!/usr/bin/env node
++/**
++ * 生成本地开发用的 .env.local。
++ *
++ * 每次生成的密钥都是随机的，只存在于你本机、且已被 .gitignore 排除。
++ * 这里刻意不内置任何固定私钥 —— 仓库里原先硬编码的
++ * 0xac0974be…（Hardhat 0 号账户）是全网公开的，用它签名等于没签。
++ *
++ * 用法: node scripts/setup-dev-env.mjs [--force]
++ */
++import { randomBytes } from 'node:crypto';
++import { writeFileSync, existsSync } from 'node:fs';
++import { resolve, dirname } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++// 以脚本自身位置为准，这样从仓库根目录用 pnpm setup:env 调用也能写对地方
++const pkgRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
++const target = resolve(pkgRoot, '.env.local');
++const force = process.argv.includes('--force');
++
++if (existsSync(target) && !force) {
++  console.error(`✋ ${target} 已存在。要重新生成请加 --force（会覆盖现有密钥）。`);
++  process.exit(1);
++}
++
++const hex32 = () => '0x' + randomBytes(32).toString('hex');
++const addr = () => '0x' + randomBytes(20).toString('hex');
++const secret = (n = 48) => randomBytes(n).toString('base64url');
++
++const body = `# 本地开发环境变量 —— 由 scripts/setup-dev-env.mjs 生成
++# 生成时间: ${new Date().toISOString()}
++#
++# ⚠️ 本文件已被 .gitignore 排除，请勿提交、勿复制到生产环境。
++# ⚠️ 下面的私钥是随机生成的本地测试用密钥，不要往对应地址转入任何资产。
++
++NODE_ENV=development
++API_PORT=3002
++HOST=127.0.0.1
++LOG_LEVEL=debug
++
++# ── 密钥 ────────────────────────────────────────────────────────────
++JWT_SECRET=${secret()}
++ADMIN_API_KEY=${randomBytes(32).toString('hex')}
++PRICER_PRIVATE_KEY=${hex32()}
++ISSUER_PRIVATE_KEY=${hex32()}
++
++# ── 链上配置 ────────────────────────────────────────────────────────
++# 默认指向本地 anvil/hardhat 节点。要连 Base 主网请自行改为
++# PAYMENT_CHAIN_ID=8453 且 BASE_RPC=https://mainnet.base.org
++PAYMENT_CHAIN_ID=31337
++BASE_RPC=http://127.0.0.1:8545
++CONFIRMATIONS=1
++
++# 下面三个地址是随机占位值，只为让 EnvValidator 通过、服务能起来。
++# 在本地链上部署完 CheckoutUSDC 和 MockUSDC 之后，务必替换成真实地址。
++CHECKOUT_CONTRACT_ADDRESS=${addr()}
++PAYMENT_VAULT_ADDRESS=${addr()}
++USDC_ADDRESS=${addr()}
++
++# ── 数据库 ──────────────────────────────────────────────────────────
++DB_ADAPTER=sqlite
++DB_FILE=./data/dev-us-backend.db
++
++# ── CORS ───────────────────────────────────────────────────────────
++ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
++
++# ── 依赖服务 ────────────────────────────────────────────────────────
++JP_VERIFY_BASE_URL=http://127.0.0.1:8082
++`;
++
++writeFileSync(target, body, { mode: 0o600 });
++console.log(`✅ 已生成 ${target}（权限 600）`);
++console.log('   密钥均为随机值，仅供本地开发。');
++console.log('   合约地址留空，部署后请补上 CHECKOUT_CONTRACT_ADDRESS / PAYMENT_VAULT_ADDRESS / USDC_ADDRESS。');
+diff --git a/apps/us-backend/src/app.ts b/apps/us-backend/src/app.ts
+index 96272cc..9eb609b 100644
+--- a/apps/us-backend/src/app.ts
++++ b/apps/us-backend/src/app.ts
+@@ -3,7 +3,6 @@ import cors from 'cors';
+ import helmet from 'helmet';
+ import compression from 'compression';
+ import rateLimit from 'express-rate-limit';
+-import { createHttpTerminator } from 'http-terminator';
+ import path from 'path';
+ import { fileURLToPath } from 'url';
+ import registerRoutes from './routes/index.js';
+@@ -17,29 +16,49 @@ const __filename = fileURLToPath(import.meta.url);
+ const __dirname = path.dirname(__filename);
+ 
+ const app = express();
+-const port = process.env.PORT || 3000;
++
++// 部署在 Nginx / Cloudflare 等反向代理后面时，限流必须按真实客户端 IP 计数
++app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS || 1));
+ 
+ // 安全中间件
+ app.use(helmet());
+ 
+-// CORS配置 - 严格白名单（未配置时宽松允许，便于开发环境）
++// CORS配置 - 严格白名单
++// 生产环境必须显式配置 ALLOWED_ORIGINS；否则配合 credentials:true 等于对任意站点开放带凭证的跨域请求。
++const isProd = (process.env.NODE_ENV || 'development') === 'production';
++const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
++  .split(',')
++  .map((s) => s.trim())
++  .filter(Boolean);
++
++if (isProd && allowedOrigins.length === 0) {
++  throw new Error('[config] 生产环境必须配置 ALLOWED_ORIGINS（逗号分隔的来源白名单）。');
++}
++
+ const corsOptions = {
+   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
++    // 同源 / 非浏览器请求（curl、服务端调用）没有 Origin 头
+     if (!origin) return callback(null, true);
+-    const allowedOrigins = (process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean)) || [];
+-    if (allowedOrigins.length === 0) {
++    if (allowedOrigins.includes(origin)) return callback(null, true);
++    // 开发环境放行 localhost，其余一律拒绝
++    if (!isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+       return callback(null, true);
+     }
+-    if (allowedOrigins.includes(origin)) {
+-      callback(null, true);
+-    } else {
+-      console.warn(`CORS阻止了来源: ${origin}`);
+-      callback(new Error('Not allowed by CORS'));
+-    }
++    console.warn(`CORS阻止了来源: ${origin}`);
++    return callback(new Error('Not allowed by CORS'));
+   },
+   credentials: true,
+   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
++  // 补齐实际用到的自定义头，否则跨域预检会直接拒绝携带 API Key 的请求
++  allowedHeaders: [
++    'Content-Type',
++    'Authorization',
++    'X-Requested-With',
++    'X-API-Key',
++    'X-Admin-Api-Key',
++    'Idempotency-Key',
++    'X-Request-Id'
++  ]
+ };
+ app.use(cors(corsOptions));
+ app.use(compression());
+diff --git a/apps/us-backend/src/database/dao/base.ts b/apps/us-backend/src/database/dao/base.ts
+index 9b8e3c7..08cc6be 100644
+--- a/apps/us-backend/src/database/dao/base.ts
++++ b/apps/us-backend/src/database/dao/base.ts
+@@ -1,5 +1,8 @@
+ // DAO层基础接口定义
+-import type { Database } from 'sqlite3';
++// 修复：运行时注入的是 better-sqlite3 实例（同步 API），
++// 原先却按 node-sqlite3 声明类型（`import type { Database } from 'sqlite3'`），
++// 导致这些文件被写成了回调风格 —— 回调永远不会被调用。
++import type { Database } from 'better-sqlite3';
+ 
+ export interface BaseDAO<T> {
+   findById(id: string): T | undefined;
+@@ -60,14 +63,12 @@ export abstract class BaseDAOImpl<T extends { id: string }> implements BaseDAO<T
+   abstract update(id: string, updates: Partial<T>): T | undefined;
+ 
+   delete(id: string): boolean {
++    // 修复：db 是 better-sqlite3（同步 API，run 直接返回 { changes }），
++    // 原代码按 node-sqlite3 的回调风格写，回调永远不会被调用，
++    // 且回调里的 this.changes 在 TS 下是隐式 any（TS2683）。
+     const stmt = this.db.prepare(`DELETE FROM ${this.tableName} WHERE id = ?`);
+-    let changes = 0;
+-    stmt.run(id, function(err) {
+-      if (!err) {
+-        changes = this.changes;
+-      }
+-    });
+-    return changes > 0;
++    const info = stmt.run(id);
++    return info.changes > 0;
+   }
+ 
+   count(filter?: Record<string, any>): number {
+diff --git a/apps/us-backend/src/database/dao/orderDAO.ts b/apps/us-backend/src/database/dao/orderDAO.ts
+index 228f661..f237977 100644
+--- a/apps/us-backend/src/database/dao/orderDAO.ts
++++ b/apps/us-backend/src/database/dao/orderDAO.ts
+@@ -1,5 +1,8 @@
+ // 订单DAO实现
+-import type { Database } from 'sqlite3';
++// 修复：运行时注入的是 better-sqlite3 实例（同步 API），
++// 原先却按 node-sqlite3 声明类型（`import type { Database } from 'sqlite3'`），
++// 导致这些文件被写成了回调风格 —— 回调永远不会被调用。
++import type { Database } from 'better-sqlite3';
+ import { BaseDAOImpl, PageRequest, PageResponse } from './base.js';
+ 
+ export interface Order {
+@@ -54,6 +57,8 @@ export class OrderDAO extends BaseDAOImpl<Order> {
+         duration_hours INTEGER NOT NULL,
+         status TEXT NOT NULL DEFAULT 'pending',
+         payment_proof_id TEXT,
++        payment_tx_hash TEXT,
++        payment_block_number INTEGER,
+         evidence_id TEXT,
+         claim_id TEXT,
+         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+diff --git a/apps/us-backend/src/database/db.ts b/apps/us-backend/src/database/db.ts
+index a488f64..d1d08c9 100644
+--- a/apps/us-backend/src/database/db.ts
++++ b/apps/us-backend/src/database/db.ts
+@@ -124,4 +124,30 @@ await dbManager.waitForInitialization().catch(error => {
+ });
+ 
+ export const db = dbManager.getDatabase();
++
++/**
++ * 模块级事务包装器。
++ *
++ * 修复：contractListenerService.ts 和 routes/min.ts 都写成
++ * `import { withTransaction } from '../database/db.js'`，但这里从未导出过
++ * 同名函数 —— 编译报 TS2614，运行时是 `undefined is not a function`。
++ * DatabaseManager 上确实有一个同名方法，但它是同步的（better-sqlite3 的
++ * 事务无法跨 await），而两个调用点传的都是 async 函数：一旦回调返回 Promise，
++ * better-sqlite3 的 transaction() 会立刻提交，事务等于没生效。
++ *
++ * 这里改为显式 BEGIN / COMMIT / ROLLBACK，从而同时支持同步与异步回调。
++ * 注意：单连接、单进程下才成立，且不支持嵌套调用。
++ */
++export async function withTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
++  db.run('BEGIN');
++  try {
++    const result = await fn();
++    db.run('COMMIT');
++    return result;
++  } catch (error) {
++    try { db.run('ROLLBACK'); } catch { /* 回滚失败时保留原始错误 */ }
++    throw error;
++  }
++}
++
+ export default dbManager;
+diff --git a/apps/us-backend/src/database/migrations/000_create_contract_events.sql b/apps/us-backend/src/database/migrations/000_create_contract_events.sql
+index bc430ec..935fecb 100644
+--- a/apps/us-backend/src/database/migrations/000_create_contract_events.sql
++++ b/apps/us-backend/src/database/migrations/000_create_contract_events.sql
+@@ -24,8 +24,15 @@ CREATE INDEX IF NOT EXISTS idx_contract_events_buyer_address ON contract_events(
+ CREATE INDEX IF NOT EXISTS idx_contract_events_block_number ON contract_events(block_number);
+ CREATE INDEX IF NOT EXISTS idx_contract_events_status ON contract_events(status);
+ 
+--- 创建订单表（如果不存在）
+-CREATE TABLE IF NOT EXISTS orders (
++-- 【重命名说明】本表原名 orders。
++-- 它属于链上事件监听子系统（id 自增、order_id 为链上订单号、buyer_address/amount），
++-- 与应用层的订单表（010_persist_memory_tables.sql 里 id 为 TEXT 主键、
++-- 含 wallet_address / premium_usdc 等列）是两回事。
++-- 由于本文件在 migrationManager 的执行顺序中排在最前，它抢先建出了名为 orders 的表，
++-- 后面 002 和 010 里的 CREATE TABLE IF NOT EXISTS orders 全部静默跳过，
++-- 导致 orderServiceDb / orderDAO / minimal-create 对 orders 的每一次读写
++-- 都会因为「no such column」而失败。改名以消除冲突。
++CREATE TABLE IF NOT EXISTS contract_orders (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     order_id TEXT UNIQUE NOT NULL,
+     buyer_address TEXT NOT NULL,
+@@ -39,6 +46,6 @@ CREATE TABLE IF NOT EXISTS orders (
+ );
+ 
+ -- 创建订单索引
+-CREATE INDEX IF NOT EXISTS idx_orders_order_id ON orders(order_id);
+-CREATE INDEX IF NOT EXISTS idx_orders_buyer_address ON orders(buyer_address);
+-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+\ No newline at end of file
++CREATE INDEX IF NOT EXISTS idx_contract_orders_order_id ON contract_orders(order_id);
++CREATE INDEX IF NOT EXISTS idx_contract_orders_buyer ON contract_orders(buyer_address);
++CREATE INDEX IF NOT EXISTS idx_contract_orders_status ON contract_orders(status);
+\ No newline at end of file
+diff --git a/apps/us-backend/src/database/migrations/001_create_contract_events.sql b/apps/us-backend/src/database/migrations/001_create_contract_events.sql
+index bc430ec..935fecb 100644
+--- a/apps/us-backend/src/database/migrations/001_create_contract_events.sql
++++ b/apps/us-backend/src/database/migrations/001_create_contract_events.sql
+@@ -24,8 +24,15 @@ CREATE INDEX IF NOT EXISTS idx_contract_events_buyer_address ON contract_events(
+ CREATE INDEX IF NOT EXISTS idx_contract_events_block_number ON contract_events(block_number);
+ CREATE INDEX IF NOT EXISTS idx_contract_events_status ON contract_events(status);
+ 
+--- 创建订单表（如果不存在）
+-CREATE TABLE IF NOT EXISTS orders (
++-- 【重命名说明】本表原名 orders。
++-- 它属于链上事件监听子系统（id 自增、order_id 为链上订单号、buyer_address/amount），
++-- 与应用层的订单表（010_persist_memory_tables.sql 里 id 为 TEXT 主键、
++-- 含 wallet_address / premium_usdc 等列）是两回事。
++-- 由于本文件在 migrationManager 的执行顺序中排在最前，它抢先建出了名为 orders 的表，
++-- 后面 002 和 010 里的 CREATE TABLE IF NOT EXISTS orders 全部静默跳过，
++-- 导致 orderServiceDb / orderDAO / minimal-create 对 orders 的每一次读写
++-- 都会因为「no such column」而失败。改名以消除冲突。
++CREATE TABLE IF NOT EXISTS contract_orders (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     order_id TEXT UNIQUE NOT NULL,
+     buyer_address TEXT NOT NULL,
+@@ -39,6 +46,6 @@ CREATE TABLE IF NOT EXISTS orders (
+ );
+ 
+ -- 创建订单索引
+-CREATE INDEX IF NOT EXISTS idx_orders_order_id ON orders(order_id);
+-CREATE INDEX IF NOT EXISTS idx_orders_buyer_address ON orders(buyer_address);
+-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+\ No newline at end of file
++CREATE INDEX IF NOT EXISTS idx_contract_orders_order_id ON contract_orders(order_id);
++CREATE INDEX IF NOT EXISTS idx_contract_orders_buyer ON contract_orders(buyer_address);
++CREATE INDEX IF NOT EXISTS idx_contract_orders_status ON contract_orders(status);
+\ No newline at end of file
+diff --git a/apps/us-backend/src/database/migrations/002_verify_schema.sql b/apps/us-backend/src/database/migrations/002_verify_schema.sql
+index b285d19..0d7b5ca 100644
+--- a/apps/us-backend/src/database/migrations/002_verify_schema.sql
++++ b/apps/us-backend/src/database/migrations/002_verify_schema.sql
+@@ -20,7 +20,12 @@ CREATE TABLE IF NOT EXISTS api_keys (
+ );
+ 
+ -- 3) 订单验证记录表
+-CREATE TABLE IF NOT EXISTS orders (
++-- 【重命名说明】本表原名 orders，但存的是「订单验证记录」
++-- （exchange / ord_id / inst_id / liquidated），与应用层订单表同名不同义，
++-- 会和 010_persist_memory_tables.sql 里真正的 orders 表冲突。
++-- 仓库中没有任何代码读写这张表（验证数据实际落在 verify_results / verify_requests），
++-- 故改名以消除冲突。
++CREATE TABLE IF NOT EXISTS order_verifications (
+   id TEXT PRIMARY KEY,
+   user_id TEXT NOT NULL,
+   exchange TEXT NOT NULL,
+diff --git a/apps/us-backend/src/database/migrations/010_persist_memory_tables.sql b/apps/us-backend/src/database/migrations/010_persist_memory_tables.sql
+index aa926a7..786478f 100644
+--- a/apps/us-backend/src/database/migrations/010_persist_memory_tables.sql
++++ b/apps/us-backend/src/database/migrations/010_persist_memory_tables.sql
+@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS orders (
+   duration_hours INTEGER NOT NULL,
+   status TEXT NOT NULL DEFAULT 'pending', -- pending/paid/active/expired/claimed
+   payment_proof_id TEXT,
++  -- 支付上链信息：原先只写进文件账本，SQL 里无处存放，导致对账只能靠文件
++  payment_tx_hash TEXT,
++  payment_block_number INTEGER,
+   evidence_id TEXT,
+   claim_id TEXT,
+   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+diff --git a/apps/us-backend/src/loadEnv.ts b/apps/us-backend/src/loadEnv.ts
+new file mode 100644
+index 0000000..71a5063
+--- /dev/null
++++ b/apps/us-backend/src/loadEnv.ts
+@@ -0,0 +1,52 @@
++/**
++ * 环境变量加载器 —— 必须是 server.ts 的第一个 import。
++ *
++ * 修复：原先 server.ts 的写法是
++ *
++ *   import app from './app.js';          // ← 第 4 行
++ *   ...
++ *   dotenv.config();                     // ← 第 12 行
++ *
++ * ESM 规范里 import 会被提升并在模块体执行前全部求值完毕，所以 app.ts
++ * （连同它创建的 AuthService、OrderService，以及 database/db.ts 的顶层
++ * await 建库）在 dotenv.config() 之前就已经跑完了。结果是 .env 里的
++ * JWT_SECRET / DB_FILE / ALLOWED_ORIGINS 等全部读不到：
++ *   - AuthService 拿不到 JWT_SECRET
++ *   - 数据库落在默认路径而不是 DB_FILE 指定的位置
++ *   - CORS 白名单为空
++ *   - EnvValidator 的校验在一切都已初始化之后才执行，形同虚设
++ *
++ * 把加载动作独立成模块并放在首位，利用「ESM 按 import 顺序求值」保证
++ * 环境变量在任何业务模块被求值之前就绪。
++ */
++import dotenv from 'dotenv';
++import path from 'path';
++import fs from 'fs';
++
++const nodeEnv = process.env.NODE_ENV || 'development';
++
++// 后加载的文件不覆盖已存在的变量（dotenv 默认行为），
++// 因此优先级为：进程环境 > .env.local > .env.<NODE_ENV> > .env
++const candidates = [
++  '.env.local',
++  `.env.${nodeEnv}`,
++  '.env'
++];
++
++const loaded: string[] = [];
++for (const file of candidates) {
++  const full = path.resolve(process.cwd(), file);
++  if (fs.existsSync(full)) {
++    dotenv.config({ path: full });
++    loaded.push(file);
++  }
++}
++
++if (loaded.length === 0) {
++  console.warn('⚠️  未找到任何 .env 文件，将只使用进程环境变量。可从 .env.example 复制一份。');
++} else {
++  console.log(`🔧 已加载环境变量文件: ${loaded.join(', ')}`);
++}
++
++export const NODE_ENV = nodeEnv;
++export default loaded;
+diff --git a/apps/us-backend/src/middleware/authMiddleware.ts b/apps/us-backend/src/middleware/authMiddleware.ts
+index 801ac1b..5c7f5aa 100644
+--- a/apps/us-backend/src/middleware/authMiddleware.ts
++++ b/apps/us-backend/src/middleware/authMiddleware.ts
+@@ -1,5 +1,5 @@
+ import { NextFunction, Request, Response } from 'express';
+-import AuthService, { AuthenticatedUser } from '../services/authService';
++import AuthService, { AuthenticatedUser } from '../services/authService.js';
+ import { AuthenticationError, ERROR_CODES } from '../types/errors.js';
+ 
+ export interface AuthInfo {
+diff --git a/apps/us-backend/src/middleware/walletOwnership.ts b/apps/us-backend/src/middleware/walletOwnership.ts
+new file mode 100644
+index 0000000..4a6d4c8
+--- /dev/null
++++ b/apps/us-backend/src/middleware/walletOwnership.ts
+@@ -0,0 +1,43 @@
++import type express from 'express';
++import type { AuthenticatedRequest } from './authMiddleware.js';
++
++/**
++ * 从已认证会话中取出钱包地址。
++ *
++ * 本项目只允许钱包登录（authService.validateSession 会强制 loginType === 'wallet'），
++ * 所以 req.auth.profile.walletAddress 就是调用者的身份。
++ */
++export function getAuthWallet(req: express.Request): string | null {
++  const auth = (req as AuthenticatedRequest).auth as any;
++  const wallet = auth?.profile?.walletAddress ?? auth?.walletAddress ?? null;
++  return wallet ? String(wallet).toLowerCase() : null;
++}
++
++/**
++ * 校验「调用者的钱包」与「资源归属的钱包」一致。
++ *
++ * 修复：orders 相关接口此前完全不做归属校验 ——
++ *   - GET  /orders/my            填别人的地址就能看别人的订单
++ *   - POST /orders/:id/submit-tx 任何人都能对任意订单提交交易哈希
++ *   - POST /orders/minimal-create 任何人都能替任意钱包建单
++ */
++export function assertWalletMatches(
++  req: express.Request,
++  res: express.Response,
++  ownerWallet: string | null | undefined
++): boolean {
++  const caller = getAuthWallet(req);
++  if (!caller) {
++    res.status(401).json({ ok: false, code: 'UNAUTHORIZED', message: '需要钱包登录' });
++    return false;
++  }
++  const owner = String(ownerWallet || '').toLowerCase();
++  if (!owner || owner !== caller) {
++    // 不透露该订单是否存在
++    res.status(403).json({ ok: false, code: 'FORBIDDEN', message: '无权操作该订单' });
++    return false;
++  }
++  return true;
++}
++
++export default assertWalletMatches;
+diff --git a/apps/us-backend/src/models/apiKey.ts b/apps/us-backend/src/models/apiKey.ts
+index c128406..149f4f4 100644
+--- a/apps/us-backend/src/models/apiKey.ts
++++ b/apps/us-backend/src/models/apiKey.ts
+@@ -1,4 +1,4 @@
+-import type { StatusState } from './status';
++import type { StatusState } from './status.js';
+ 
+ /**
+  * API密钥状态枚举
+diff --git a/apps/us-backend/src/models/index.ts b/apps/us-backend/src/models/index.ts
+index ec4cfbc..ad6afe3 100644
+--- a/apps/us-backend/src/models/index.ts
++++ b/apps/us-backend/src/models/index.ts
+@@ -1,8 +1,8 @@
+-export * from './status';
+-export * from './user';
+-export * from './organization';
+-export * from './userOrgMembership';
+-export * from './organizationWallet';
+-export * from './product';
+-export * from './quote';
+-export * from './apiKey';
+\ No newline at end of file
++export * from './status.js';
++export * from './user.js';
++export * from './organization.js';
++export * from './userOrgMembership.js';
++export * from './organizationWallet.js';
++export * from './product.js';
++export * from './quote.js';
++export * from './apiKey.js';
+\ No newline at end of file
+diff --git a/apps/us-backend/src/models/organization.ts b/apps/us-backend/src/models/organization.ts
+index e34af3c..3c9a534 100644
+--- a/apps/us-backend/src/models/organization.ts
++++ b/apps/us-backend/src/models/organization.ts
+@@ -1,4 +1,4 @@
+-import type { StatusState } from './status';
++import type { StatusState } from './status.js';
+ 
+ /**
+  * Describes an organization that can onboard exchange accounts.
+diff --git a/apps/us-backend/src/models/product.ts b/apps/us-backend/src/models/product.ts
+index da00f7c..c7688e6 100644
+--- a/apps/us-backend/src/models/product.ts
++++ b/apps/us-backend/src/models/product.ts
+@@ -1,4 +1,4 @@
+-import { db } from '../database/db';
++import { db } from '../database/db.js';
+ 
+ export interface Product {
+   id: string;
+diff --git a/apps/us-backend/src/models/quote.ts b/apps/us-backend/src/models/quote.ts
+index 8e3cafd..03c607d 100644
+--- a/apps/us-backend/src/models/quote.ts
++++ b/apps/us-backend/src/models/quote.ts
+@@ -1,4 +1,4 @@
+-import { db } from '../database/db';
++import { db } from '../database/db.js';
+ 
+ export interface Quote {
+   id: string;
+@@ -106,16 +106,10 @@ export class QuoteModel {
+   }
+ 
+   static async cleanupExpiredQuotes(): Promise<number> {
+-    return new Promise((resolve, reject) => {
+-      db.run(
+-        'DELETE FROM quotes WHERE expires_at <= ?',
+-        [new Date().toISOString()],
+-        function(err) {
+-          if (err) reject(err);
+-          else resolve(this.changes);
+-        }
+-      );
+-    });
++    // 修复：db 来自 better-sqlite3（同步 API），原代码按 node-sqlite3 的
++    // 回调风格调用，回调永远不会执行，Promise 永远 pending。
++    const info = db.run('DELETE FROM quotes WHERE expires_at <= ?', new Date().toISOString());
++    return info.changes;
+   }
+ 
+   static async getQuoteStats(productId: string): Promise<{
+diff --git a/apps/us-backend/src/models/user.ts b/apps/us-backend/src/models/user.ts
+index 166f692..5a4bee3 100644
+--- a/apps/us-backend/src/models/user.ts
++++ b/apps/us-backend/src/models/user.ts
+@@ -1,4 +1,4 @@
+-import type { StatusState } from './status';
++import type { StatusState } from './status.js';
+ 
+ /**
+  * Represents an authenticated LiqPass account holder.
+diff --git a/apps/us-backend/src/models/userOrgMembership.ts b/apps/us-backend/src/models/userOrgMembership.ts
+index 97041fa..66b2fa1 100644
+--- a/apps/us-backend/src/models/userOrgMembership.ts
++++ b/apps/us-backend/src/models/userOrgMembership.ts
+@@ -1,4 +1,4 @@
+-import type { StatusState } from './status';
++import type { StatusState } from './status.js';
+ 
+ /**
+  * Links a user to an organization with a specific role and status.
+diff --git a/apps/us-backend/src/routes/index.ts b/apps/us-backend/src/routes/index.ts
+index bffc2ea..a93eaf2 100644
+--- a/apps/us-backend/src/routes/index.ts
++++ b/apps/us-backend/src/routes/index.ts
+@@ -29,7 +29,7 @@ export default function registerRoutes(app: express.Application, deps: RouteDepe
+   app.use('/api/v1/auth', authRoutes(authService, requireAuth));
+   app.use('/api/v1', claimsRoutes(claimsService, authService));
+   app.use('/api/v1/claims', claimsVerifySimpleRoutes(authService));
+-  app.use('/api/v1', ordersRoutes(orderService));
++  app.use('/api/v1', ordersRoutes(orderService, requireAuth));
+   app.use('/api/v1/admin', adminClaimsRoutes);
+   app.use('/api/v1/api-keys', apiKeysRoutes);
+   app.use('/api/v1/pricing', pricingRoutes);
+diff --git a/apps/us-backend/src/routes/min.ts b/apps/us-backend/src/routes/min.ts
+index d20f3af..9ba124c 100644
+--- a/apps/us-backend/src/routes/min.ts
++++ b/apps/us-backend/src/routes/min.ts
+@@ -1,13 +1,13 @@
+ import express from 'express';
+ import dbManager, { db as sqlite, withTransaction } from '../database/db.js';
+ 
+-// SQLite3 回调风格转 Promise
+-const runAsync = (sql: string, params: any[] = []) => new Promise<{ changes: number; lastID?: number }>((resolve, reject) => {
+-  sqlite.run(sql, params, function (err) {
+-    if (err) return reject(err);
+-    resolve({ changes: this.changes, lastID: this.lastID });
+-  });
+-});
++// 修复：sqlite 来自 better-sqlite3（同步 API：run(sql, ...params) 直接返回
++// { changes, lastInsertRowid }）。原代码按 node-sqlite3 的回调风格写，
++// 回调永远不会被调用，这两个 Promise 会永远挂起。
++const runAsync = async (sql: string, params: any[] = []): Promise<{ changes: number; lastID?: number }> => {
++  const info = sqlite.run(sql, ...params);
++  return { changes: info.changes, lastID: Number(info.lastInsertRowid) };
++};
+ 
+ const allAsync = <T = any>(sql: string, params: any[] = []) => new Promise<T[]>((resolve, reject) => {
+   sqlite.all(sql, params, (err, rows) => {
+diff --git a/apps/us-backend/src/routes/orders.ts b/apps/us-backend/src/routes/orders.ts
+index f61d707..d70cd5b 100644
+--- a/apps/us-backend/src/routes/orders.ts
++++ b/apps/us-backend/src/routes/orders.ts
+@@ -1,12 +1,14 @@
+ import express from 'express';
+ import { z } from 'zod';
+-import { ethers } from 'ethers';
+ import OrderService, { OrderError } from '../services/orderService.js';
+ import AuthService from '../services/authService.js';
+ import { EnhancedAuthMiddleware } from '../middleware/enhancedAuth.js';
+ import { createApiKeyAuthInstance } from '../middleware/apiKeyAuth.js';
+ import { appendOrder } from '../database/fileLedger.js';
+ import dbManager, { db } from '../database/db.js';
++import { verifyPremiumPaid, PaymentVerifyError } from '../services/paymentVerification.js';
++import { getAuthWallet, assertWalletMatches } from '../middleware/walletOwnership.js';
++import type { RequireAuthMiddleware } from '../middleware/authMiddleware.js';
+ import { v4 as uuid } from 'uuid';
+ // 注：移除对数据库的幂等性快照依赖，改由服务层与文件账本保证一致性
+ 
+@@ -36,7 +38,7 @@ const toFixedString = (value: number, fractionDigits: number) =>
+ 
+ // 幂等性快照改由 OrderService 内部索引与文件账本保障，路由层不再写入独立快照
+ 
+-export default function ordersRoutes(orderService: OrderService) {
++export default function ordersRoutes(orderService: OrderService, requireAuth: RequireAuthMiddleware) {
+   const router = express.Router();
+   const apiKeyAuth = createApiKeyAuthInstance(dbManager);
+   const enhancedAuth = new EnhancedAuthMiddleware(new AuthService(), apiKeyAuth);
+@@ -57,15 +59,19 @@ export default function ordersRoutes(orderService: OrderService) {
+     return res.json({ ok: true, orders });
+   });
+ 
+-  router.get('/orders/my', async (req, res) => {
+-    const addrRaw = (req.query.address || req.query.wallet || '') as string;
+-    const address = addrRaw.toString().toLowerCase();
++  // 修复：此前该接口不做任何身份校验，任意填一个钱包地址就能读到对方的全部订单。
++  // 现在以登录会话中的钱包为准，忽略客户端传入的 address/wallet 参数。
++  router.get('/orders/my', requireAuth, async (req, res) => {
++    const address = getAuthWallet(req);
+     try {
+-      const all = await orderService.listOrdersPersisted();
+-      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+-        const sorted = Array.isArray(all) ? all.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()) : [];
+-        return res.json({ ok: true, orders: sorted });
++      if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
++        return res.status(401).json({
++          ok: false,
++          code: 'UNAUTHORIZED',
++          message: '当前会话没有绑定钱包地址'
++        });
+       }
++      const all = await orderService.listOrdersPersisted();
+       const list = all.filter(o => o.wallet.toLowerCase() === address);
+       return res.json({ ok: true, orders: list });
+     } catch (error) {
+@@ -223,27 +229,56 @@ export default function ordersRoutes(orderService: OrderService) {
+   });
+ 
+   // 最小创建：用于链上支付前占位，避免 /submit-tx 找不到订单
+-  router.post('/orders/minimal-create', async (req, res) => {
++  router.post('/orders/minimal-create', requireAuth, async (req, res) => {
+     try {
+-      const { orderId, wallet, premiumUSDC } = req.body as any;
++      // ── 修复 ────────────────────────────────────────────────────────────
++      // 原实现无鉴权、无链上核验，保费由客户端申报，principal/payout 一律写 0：
++      // 任何人都能凭空为任意钱包造订单，金额随便填。
++      // 现在要求必须带上已确认的链上交易，并由服务端核验
++      // PremiumPaid(买家, 金额) 后才落库；保费以链上实际支付金额为准。
++      const { orderId, wallet, txHash, principal, leverage } = req.body as any;
+       const id = String(orderId || '').trim();
+       const w = String(wallet || '').trim().toLowerCase();
+-      const premium = Number(premiumUSDC);
++      const tx = String(txHash || '').trim();
++
+       if (!/^ord_[a-f0-9\-]{36}$/.test(id) && !/^0x[0-9a-fA-F]{64}$/.test(id) && id.length < 16) {
+         return res.status(400).json({ ok: false, code: 'INVALID_ORDER_ID', message: '订单ID无效' });
+       }
+       if (!/^0x[a-fA-F0-9]{40}$/.test(w)) {
+         return res.status(400).json({ ok: false, code: 'INVALID_WALLET', message: '钱包地址无效' });
+       }
+-      if (!Number.isFinite(premium) || premium <= 0) {
+-        return res.status(400).json({ ok: false, code: 'INVALID_PREMIUM', message: '保费金额无效' });
++      // 只能为自己的钱包建单
++      if (!assertWalletMatches(req, res, w)) return;
++      if (!/^0x[0-9a-fA-F]{64}$/.test(tx)) {
++        return res.status(400).json({ ok: false, code: 'INVALID_TX_HASH', message: '缺少或非法的支付交易哈希' });
+       }
++
+       const exists = db.get(`SELECT id FROM orders WHERE id = ? LIMIT 1`, id) as any;
+       if (exists) {
+         return res.json({ ok: true, created: false });
+       }
++
++      // 同一笔交易不可用于多个订单
++      const txUsed = db.get(`SELECT id FROM orders WHERE payment_tx_hash = ? LIMIT 1`, tx) as any;
++      if (txUsed) {
++        return res.status(409).json({ ok: false, code: 'TX_ALREADY_USED', message: '该交易已用于其它订单' });
++      }
++
++      let verified;
++      try {
++        verified = await verifyPremiumPaid({ txHash: tx, expectedBuyer: w });
++      } catch (err: any) {
++        if (err instanceof PaymentVerifyError) {
++          return res.status(err.httpStatus).json({ ok: false, code: err.code, message: err.message });
++        }
++        throw err;
++      }
++
+       const nowIso = new Date().toISOString();
+-      const premium6d = Math.round(premium * 1_000_000);
++      // 以链上实际支付金额为准，不接受客户端申报
++      const premium6d = Number(verified.amount6d);
++      const principalNum = Math.max(0, Math.round(Number(principal) || 0));
++      const leverageNum = Math.max(0, Math.round(Number(leverage) || 0));
+       db.run(
+         `INSERT INTO orders (
+           id, user_id, wallet_address, product_id, principal_usdc, leverage,
+@@ -254,12 +289,12 @@ export default function ordersRoutes(orderService: OrderService) {
+         'user-id-placeholder',
+         w,
+         'sku_24h_liq',
+-        0,
+-        0,
++        principalNum,
++        leverageNum,
+         premium6d,
+-        0,
++        0, // payout_usdc：本最小化路径不承诺赔付额，理赔时按产品规则另行计算
+         24,
+-        'pending',
++        'paid',
+         null,
+         nowIso,
+         nowIso,
+@@ -351,7 +386,7 @@ export default function ordersRoutes(orderService: OrderService) {
+     txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+   });
+ 
+-  router.post('/orders/:orderId/submit-tx', async (req, res) => {
++  router.post('/orders/:orderId/submit-tx', requireAuth, async (req, res) => {
+     const { orderId } = req.params;
+     const parsed = submitSchema.safeParse(req.body);
+     if (!parsed.success) {
+@@ -362,40 +397,79 @@ export default function ordersRoutes(orderService: OrderService) {
+     if (!order) {
+       return res.status(404).json({ ok: false, code: 'ORDER_NOT_FOUND', message: '订单不存在' });
+     }
++    // 只有订单归属的钱包本人可以提交支付凭证
++    if (!assertWalletMatches(req, res, order.wallet)) return;
++
+     if (order.status === 'paid') {
+       return res.json({ ok: true, alreadyPaid: true, order });
+     }
+ 
+-    const rpc = (process.env.BASE_RPC || 'https://mainnet.base.org').toString();
+-    const provider = new ethers.JsonRpcProvider(rpc);
+-    const targetContract = (process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '').toLowerCase();
+-    const expectedChainId = String(process.env.PAYMENT_CHAIN_ID || '8453');
+-
+     try {
+       const txHash = parsed.data.txHash;
+-      const tx = await provider.getTransaction(txHash);
+-      if (!tx) {
+-        return res.status(400).json({ ok: false, code: 'TX_NOT_FOUND', message: '交易未找到' });
++
++      // 同一笔 txHash 不可用于多个订单
++      const allOrders = await orderService.listOrdersPersisted();
++      const reused = allOrders.find(
++        (o: any) => o.id !== order.id && String(o.paymentTx || '').toLowerCase() === txHash.toLowerCase()
++      );
++      if (reused) {
++        return res.status(409).json({ ok: false, code: 'TX_ALREADY_USED', message: '该交易已用于其它订单' });
+       }
+-      const receipt = await provider.waitForTransaction(txHash, 1);
+-      if (!receipt || receipt.status !== 1) {
+-        return res.status(400).json({ ok: false, code: 'TX_FAILED', message: '交易未上链或失败' });
++
++      const expectedAmount = BigInt(Math.round(Number((order as any).premiumUSDC6d ?? 0)));
++      if (expectedAmount <= 0n) {
++        return res.status(500).json({ ok: false, code: 'ORDER_AMOUNT_MISSING', message: '订单保费金额缺失，无法核验' });
+       }
+-      const toAddr = (tx.to || '').toLowerCase();
+-      if (!targetContract || toAddr !== targetContract) {
+-        return res.status(400).json({ ok: false, code: 'TX_TO_MISMATCH', message: '交易目标地址不匹配' });
++
++      // 链上核验：PremiumPaid 事件的付款人与金额必须与订单一致
++      // （原实现只比对 tx.to 和 RPC 链 ID，任何人拿任意一笔打到合约的交易哈希
++      //   就能把任意订单标记为已支付）
++      let verified;
++      try {
++        verified = await verifyPremiumPaid({
++          txHash,
++          expectedBuyer: String(order.wallet || ''),
++          expectedAmount6d: expectedAmount
++        });
++      } catch (err: any) {
++        if (err instanceof PaymentVerifyError) {
++          return res.status(err.httpStatus).json({ ok: false, code: err.code, message: err.message });
++        }
++        throw err;
+       }
+-      const network = await provider.getNetwork();
+-      const networkChainId = String(network.chainId);
+-      if (networkChainId !== expectedChainId) {
+-        return res.status(400).json({ ok: false, code: 'CHAIN_MISMATCH', message: '链ID不匹配' });
++
++      // 链上 orderId 同样不可被两个订单复用
++      const dupOnchain = allOrders.find(
++        (o: any) => o.id !== order.id &&
++          String(o.onchainOrderId || '').toLowerCase() === verified.onchainOrderId
++      );
++      if (dupOnchain) {
++        return res.status(409).json({ ok: false, code: 'ONCHAIN_ORDER_ID_REUSED', message: '链上订单号已被占用' });
+       }
++      (order as any).onchainOrderId = verified.onchainOrderId;
+ 
+       order.status = 'paid';
+       order.paymentStatus = 'paid';
+       order.paymentTx = txHash;
+       order.updatedAt = new Date().toISOString();
+       await appendOrder(order);
++      // 修复：支付状态原先只写进文件账本，SQL 里的 orders 行永远停留在 pending，
++      // 导致任何基于 SQL 的查询和对账都看不到已支付订单。
++      try {
++        db.run(
++          `UPDATE orders
++             SET status = 'paid', payment_tx_hash = ?, payment_block_number = ?,
++                 paid_at = ?, updated_at = ?
++           WHERE id = ?`,
++          txHash,
++          verified.blockNumber,
++          order.updatedAt,
++          order.updatedAt,
++          order.id
++        );
++      } catch (e) {
++        console.warn('更新订单支付状态到 SQL 失败（文件账本已记录）:', e);
++      }
+       try {
+         const existing = db.get(`SELECT id FROM claims WHERE order_id = ? LIMIT 1`, order.id);
+         if (!existing) {
+diff --git a/apps/us-backend/src/routes/pricing.ts b/apps/us-backend/src/routes/pricing.ts
+index 57900e4..74cb2ea 100644
+--- a/apps/us-backend/src/routes/pricing.ts
++++ b/apps/us-backend/src/routes/pricing.ts
+@@ -1,14 +1,17 @@
+ import express from 'express';
+ import { ethers } from 'ethers';
+ import { z } from 'zod';
++import { lazyEnv } from '../utils/requireEnv.js';
++import requireAdminApiKey from '../middleware/requireAdminApiKey.js';
+ 
+ const router = express.Router();
+ 
+-// 私钥用于签名（生产环境应该从环境变量获取）
+-const PRICER_PRIVATE_KEY = process.env.PRICER_PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
++// 签名私钥：必须来自环境变量，缺失即报错（原先硬编码的是公开的 Hardhat 测试私钥）
++const getPricerPrivateKey = lazyEnv('PRICER_PRIVATE_KEY');
+ 
+-// 合约地址（应该与前端一致）
+-const POLICY_ADDR = process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '0xC423C34b57730Ba87FB74b99180663913a345D68';
++// 合约地址与链 ID：必须来自环境变量，避免测试网 / 主网串签
++const getPolicyAddr = lazyEnv('CHECKOUT_CONTRACT_ADDRESS', 'CHECKOUT_ADDR', 'POLICY_ADDR');
++const getChainId = () => Number(lazyEnv('PAYMENT_CHAIN_ID')());
+ 
+ /**
+  * POST /api/v1/pricing/quote
+@@ -39,6 +42,8 @@ router.post('/quote', async (req, res) => {
+ 
+     // 生成唯一ID
+     const quoteId = ethers.hexlify(ethers.randomBytes(32));
++    const POLICY_ADDR = getPolicyAddr();
++    const CHAIN_ID = getChainId();
+     const inputHash = ethers.keccak256(ethers.toUtf8Bytes(`${wallet}-${principal}-${leverage}-${Date.now()}`));
+     
+     // 设置过期时间（5分钟）
+@@ -53,7 +58,7 @@ router.post('/quote', async (req, res) => {
+       durationHours: durationHours || 24,
+       quoteId,
+       deadline: deadline.toString(),
+-      chainId: '8453', // Base主网
++      chainId: String(CHAIN_ID),
+       contractAddr: POLICY_ADDR,
+       skuId: skuId || 101
+     };
+@@ -62,7 +67,7 @@ router.post('/quote', async (req, res) => {
+     const domain = {
+       name: 'LiqPass',
+       version: '1',
+-      chainId: 8453,
++      chainId: CHAIN_ID,
+       verifyingContract: POLICY_ADDR
+     };
+ 
+@@ -82,7 +87,7 @@ router.post('/quote', async (req, res) => {
+     };
+ 
+     // 创建签名者
+-    const signer = new ethers.Wallet(PRICER_PRIVATE_KEY);
++    const signer = new ethers.Wallet(getPricerPrivateKey());
+     
+     // 生成EIP-712签名
+     const quoteSig = await signer.signTypedData(domain, types, quote);
+@@ -106,21 +111,28 @@ export default router;
+  */
+ const quoteHashSchema = z.object({
+   wallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+-  amountUSDC: z.string().regex(/^\d+(\.\d+)?$/).optional(),
++  // 必填：报价必须绑定到具体订单与金额，否则等于签一张空白支票
++  orderId: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
++  amountUSDC: z.string().regex(/^\d+(\.\d+)?$/),
+   ttlSec: z.number().int().positive().max(3600).optional()
+ });
+ 
+-router.post('/quote-hash', async (req, res) => {
++// 该接口会用服务端 owner 私钥发起链上交易（消耗 gas），必须鉴权，
++// 否则任何人都能循环调用耗空 owner 钱包。
++router.post('/quote-hash', requireAdminApiKey, async (req, res) => {
+   try {
+     const parsed = quoteHashSchema.safeParse(req.body);
+     if (!parsed.success) {
+       return res.status(400).json({ ok: false, error: 'INVALID_REQUEST', issues: parsed.error.issues });
+     }
+-    const { wallet, amountUSDC, ttlSec } = parsed.data;
++    const { wallet, orderId, amountUSDC, ttlSec } = parsed.data;
+ 
+     const rpc = process.env.BASE_RPC;
+     const ownerPk = process.env.CHECKOUT_OWNER_PRIVATE_KEY || process.env.ISSUER_PRIVATE_KEY;
+-    const checkoutAddr = process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '0xC423C34b57730Ba87FB74b99180663913a345D68';
++    const checkoutAddr = (process.env.CHECKOUT_CONTRACT_ADDRESS || process.env.CHECKOUT_ADDR || process.env.POLICY_ADDR || '').trim();
++    if (!checkoutAddr) {
++      return res.status(500).json({ ok: false, error: 'SERVER_CONFIG_MISSING', hint: '需要配置 CHECKOUT_CONTRACT_ADDRESS' });
++    }
+ 
+     if (!rpc || !ownerPk) {
+       return res.status(500).json({ ok: false, error: 'SERVER_CONFIG_MISSING', hint: '需要配置 BASE_RPC 与 ISSUER_PRIVATE_KEY' });
+@@ -130,6 +142,7 @@ router.post('/quote-hash', async (req, res) => {
+     const signer = new ethers.Wallet(ownerPk, provider);
+ 
+     const checkoutAbi = [
++      'function quoteCommitment(address buyer,bytes32 orderId,uint256 amount) pure returns (bytes32)',
+       'function registerQuoteHash(bytes32 quoteHash,uint256 expiryTime) external',
+       'function isValidQuoteHash(bytes32 quoteHash) view returns (bool)'
+     ];
+@@ -138,9 +151,16 @@ router.post('/quote-hash', async (req, res) => {
+     const nowSec = Math.floor(Date.now() / 1000);
+     const expiry = nowSec + (ttlSec ?? 600);
+ 
+-    const salt = ethers.hexlify(ethers.randomBytes(16));
+-    const amtStr = (amountUSDC ?? '').toString();
+-    const quoteHash = ethers.keccak256(ethers.toUtf8Bytes(`${wallet.toLowerCase()}:${amtStr}:${salt}:${nowSec}`));
++    // 修复：原实现用随机 salt 生成一个与订单、买家、金额都无关的裸哈希。
++    // 合约只校验「是否注册过且未过期」，任何人都能从公开事件里抄走它，
++    // 换成自己的 orderId、改成任意金额去支付。现在改为链上同款承诺哈希。
++    const amount = ethers.parseUnits(amountUSDC, 6);
++    const quoteHash = ethers.keccak256(
++      ethers.AbiCoder.defaultAbiCoder().encode(
++        ['address', 'bytes32', 'uint256'],
++        [ethers.getAddress(wallet), orderId, amount]
++      )
++    );
+ 
+     const tx = await checkout.registerQuoteHash(quoteHash, expiry);
+     const receipt = await tx.wait();
+diff --git a/apps/us-backend/src/routes/quotes.ts b/apps/us-backend/src/routes/quotes.ts
+index 3ba76ce..7a8fd72 100644
+--- a/apps/us-backend/src/routes/quotes.ts
++++ b/apps/us-backend/src/routes/quotes.ts
+@@ -1,6 +1,6 @@
+ import express from 'express';
+-import { QuoteService } from '../services/quoteService';
+-import { CreateQuoteRequest } from '../models/product';
++import { QuoteService } from '../services/quoteService.js';
++import { CreateQuoteRequest } from '../models/product.js';
+ import { AuthenticatedRequest } from '../middleware/authMiddleware.js';
+ 
+ const router = express.Router();
+diff --git a/apps/us-backend/src/routes/verification-v2.ts b/apps/us-backend/src/routes/verification-v2.ts
+index 0cd0a63..296d703 100644
+--- a/apps/us-backend/src/routes/verification-v2.ts
++++ b/apps/us-backend/src/routes/verification-v2.ts
+@@ -2,6 +2,7 @@
+ import express from 'express';
+ import dbManager from '../database/db.js';
+ import VerificationService from '../services/verificationService.js';
++import { DatabaseManager } from '../database/db.js';
+ import { VerifyRequest, VerifyResponse } from '../types/index.js';
+ 
+ const router = express.Router();
+@@ -239,7 +240,7 @@ router.post('/batch', async (req, res) => {
+   }
+ });
+ 
+-export default (dbManager: typeof dbManager) => {
++export default (dbManager: DatabaseManager) => {
+   // 将数据库管理器注入到请求对象中
+   router.use((req, res, next) => {
+     req.app.set('dbManager', dbManager);
+diff --git a/apps/us-backend/src/routes/verification.ts b/apps/us-backend/src/routes/verification.ts
+index 182df95..59b337a 100644
+--- a/apps/us-backend/src/routes/verification.ts
++++ b/apps/us-backend/src/routes/verification.ts
+@@ -1,11 +1,11 @@
+ import { Router } from 'express';
+ import { VerificationService } from '../services/verificationService.js';
+-import dbManager from '../database/db.js';
++import dbManager, { DatabaseManager } from '../database/db.js';
+ import { createApiKeyAuthMiddleware } from '../middleware/apiKeyAuth.js';
+ import { ZodError } from 'zod';
+ // 使用控制台日志代替应用级 logger，避免模块缺失导致启动失败
+ 
+-export default function verificationRoutes(dbManager: typeof dbManager) {
++export default function verificationRoutes(dbManager: DatabaseManager) {
+   const router = Router();
+   const verificationService = new VerificationService(dbManager);
+   const requireApiKey = createApiKeyAuthMiddleware(dbManager);
+diff --git a/apps/us-backend/src/routes/voucher.ts b/apps/us-backend/src/routes/voucher.ts
+index bc94a8a..08580c3 100644
+--- a/apps/us-backend/src/routes/voucher.ts
++++ b/apps/us-backend/src/routes/voucher.ts
+@@ -4,8 +4,9 @@ import { isAddress } from 'ethers';
+ 
+ const router = express.Router();
+ 
+-// 私钥用于签名（生产环境应该从环境变量获取）
+-const ISSUER_PRIVATE_KEY = process.env.ISSUER_PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
++// 签名私钥：必须来自环境变量（原先硬编码的是公开的 Hardhat 测试私钥）
++import { lazyEnv } from '../utils/requireEnv.js';
++const getIssuerPrivateKey = lazyEnv('ISSUER_PRIVATE_KEY');
+ 
+ // 合约地址（应该与前端一致）
+ const POLICY_ADDR = process.env.POLICY_ADDR || '0x0000000000000000000000000000000000000000';
+@@ -103,7 +104,7 @@ router.post('/issue', async (req, res) => {
+     };
+ 
+     // 创建签名者
+-    const signer = new ethers.Wallet(ISSUER_PRIVATE_KEY);
++    const signer = new ethers.Wallet(getIssuerPrivateKey());
+     
+     // 生成EIP-712签名
+     const voucherSig = await signer.signTypedData(domain, types, voucher);
+diff --git a/apps/us-backend/src/server.ts b/apps/us-backend/src/server.ts
+index ccf0817..356f499 100644
+--- a/apps/us-backend/src/server.ts
++++ b/apps/us-backend/src/server.ts
+@@ -1,17 +1,10 @@
+ // 服务器启动文件
+-import dotenv from 'dotenv';
+-import path from 'path';
++// ⚠️ loadEnv 必须排在所有其它 import 之前：ESM 会先把 import 全部求值完，
++//    之前把 dotenv.config() 写在模块体里，导致 app.ts 在环境变量加载前就已初始化。
++import './loadEnv.js';
+ import app from './app.js';
+ import { EnvValidator } from './utils/envValidator.js';
+ 
+-// 加载环境变量
+-const env = process.env.NODE_ENV || 'development';
+-if (env === 'production') {
+-  dotenv.config({ path: path.resolve('.env.production') });
+-} else {
+-  dotenv.config();
+-}
+-
+ // 启动前校验环境变量
+ const skipValidation = process.env.DISABLE_PAYMENT_ENV_VALIDATION === 'true';
+ if (!skipValidation) {
+diff --git a/apps/us-backend/src/services/alertService.ts b/apps/us-backend/src/services/alertService.ts
+index 47ec5d5..a5f909d 100644
+--- a/apps/us-backend/src/services/alertService.ts
++++ b/apps/us-backend/src/services/alertService.ts
+@@ -207,6 +207,10 @@ export class AlertService {
+     orderId?: string;
+     amount?: string;
+     payer?: string;
++    // 调用方（contractListenerService）一直在传这三个字段，但类型里没有声明
++    token?: string;
++    treasury?: string;
++    chainId?: string | number;
+   }): Promise<void> {
+     const alert: AlertMessage = {
+       title: `合约事件: ${eventData.eventName}`,
+diff --git a/apps/us-backend/src/services/authService.ts b/apps/us-backend/src/services/authService.ts
+index 9acb4a7..1f6bfd0 100644
+--- a/apps/us-backend/src/services/authService.ts
++++ b/apps/us-backend/src/services/authService.ts
+@@ -81,7 +81,15 @@ export default class AuthService {
+   private db: any;
+ 
+   constructor(options: AuthServiceOptions = {}) {
+-    this.jwtSecret = options.jwtSecret ?? process.env.JWT_SECRET ?? 'dev-secret';
++    const envJwtSecret = (process.env.JWT_SECRET || '').trim();
++    const secret = options.jwtSecret ?? (envJwtSecret || null);
++    if (!secret) {
++      throw new Error('[config] 缺少 JWT_SECRET。请配置一个高熵随机字符串后再启动（禁止使用 dev-secret 之类的默认值）。');
++    }
++    if (secret.length < 32) {
++      throw new Error('[config] JWT_SECRET 长度不足 32 字符，强度不够，请更换。');
++    }
++    this.jwtSecret = secret;
+     this.sessionDurationMs = options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS;
+     this.db = dbManager.getDatabase();
+   }
+diff --git a/apps/us-backend/src/services/contractListenerService.ts b/apps/us-backend/src/services/contractListenerService.ts
+index 4eaa06e..52b7d7d 100644
+--- a/apps/us-backend/src/services/contractListenerService.ts
++++ b/apps/us-backend/src/services/contractListenerService.ts
+@@ -205,20 +205,6 @@ export class ContractListenerService {
+     }
+   }
+ 
+-  /**
+-   * 停止事件监听
+-   */
+-  async stopListening(): Promise<void> {
+-    if (!this.isListening) {
+-      console.log("⚠️  事件监听器未在运行");
+-      return;
+-    }
+-
+-    this.contract.removeAllListeners("PremiumPaid");
+-    this.isListening = false;
+-    console.log("🛑 PremiumPaid事件监听器已停止");
+-  }
+-
+   /**
+    * 验证事件数据
+    */
+@@ -476,7 +462,7 @@ export class ContractListenerService {
+       console.log("✅ 重组处理完成");
+       
+       // 发送重组通知
+-      await this.alertService.sendSystemAlert({
++      await this.alertService.sendAlert({
+         level: "warning",
+         title: "区块链重组处理完成",
+         message: `成功处理了深度为 ${depth} 区块的区块链重组`,
+diff --git a/apps/us-backend/src/services/orderService.ts b/apps/us-backend/src/services/orderService.ts
+index 9e570ed..441f511 100644
+--- a/apps/us-backend/src/services/orderService.ts
++++ b/apps/us-backend/src/services/orderService.ts
+@@ -109,6 +109,24 @@ export default class OrderService {
+   }
+ 
+   createOrder(input: CreateOrderInput): { order: OrderRecord; created: boolean } {
++    // ── 修复：保费必须由服务端计算 ──────────────────────────────────────
++    // 原实现直接采用客户端 POST 上来的 premiumUSDC6d。配合前端
++    // src/debug/fetchForcePremium.ts（?force01 即可把保费改写成 0.01 USDC），
++    // 攻击者可以用 0.01 USDC 买到任意保额的保单。
++    // 这里按 (skuId, principal, leverage) 重算，并与客户端申报值比对。
++    const sku = this.getSku(input.skuId);
++    if (!sku || !sku.enabled) {
++      throw new OrderError('SKU_DISABLED', 'The requested SKU is not available.');
++    }
++    const authoritative = this.computeQuote(sku, input.principal, input.leverage);
++    const declared = Number(input.premiumUSDC6d);
++    if (Number.isFinite(declared) && declared !== authoritative.premiumUSDC6d) {
++      throw new OrderError(
++        'PREMIUM_MISMATCH',
++        `保费与服务端计算结果不符（申报 ${declared}，应为 ${authoritative.premiumUSDC6d}），请重新获取报价。`
++      );
++    }
++
+     const result = this.dbService.createOrder({
+       skuId: input.skuId,
+       principal: input.principal,
+@@ -116,7 +134,7 @@ export default class OrderService {
+       wallet: input.wallet,
+       paymentMethod: input.paymentMethod,
+       idempotencyKey: input.idempotencyKey,
+-      premiumUSDC6d: input.premiumUSDC6d,
++      premiumUSDC6d: authoritative.premiumUSDC6d,
+       paymentProofId: input.paymentProofId,
+       orderRef: input.orderRef,
+       exchange: String(input.exchange || ''),
+diff --git a/apps/us-backend/src/services/paymentVerification.ts b/apps/us-backend/src/services/paymentVerification.ts
+new file mode 100644
+index 0000000..c154728
+--- /dev/null
++++ b/apps/us-backend/src/services/paymentVerification.ts
+@@ -0,0 +1,151 @@
++import { ethers } from 'ethers';
++
++/**
++ * 链上支付核验（PremiumPaid 事件）。
++ *
++ * 抽成独立模块的原因：原先创建订单有两条路径 ——
++ *   1) POST /orders/:orderId/submit-tx  只比对 tx.to 和 RPC 链 ID
++ *   2) POST /orders/minimal-create      完全不校验，无鉴权，金额由客户端申报
++ * 两条都无法证明「这笔钱确实是这个人为这个订单付的」。现在统一走这里。
++ */
++
++export type PaymentVerifyFailure =
++  | 'SERVER_CONFIG_MISSING'
++  | 'RPC_CHAIN_MISMATCH'
++  | 'TX_NOT_FOUND'
++  | 'TX_FAILED'
++  | 'TX_PENDING_CONFIRMATIONS'
++  | 'TX_TO_MISMATCH'
++  | 'PAYMENT_EVENT_MISMATCH';
++
++export interface VerifiedPayment {
++  onchainOrderId: string;
++  buyer: string;
++  amount6d: bigint;
++  quoteHash: string;
++  txHash: string;
++  blockNumber: number;
++}
++
++export class PaymentVerifyError extends Error {
++  constructor(
++    public readonly code: PaymentVerifyFailure,
++    message: string,
++    public readonly httpStatus: number = 400
++  ) {
++    super(message);
++    this.name = 'PaymentVerifyError';
++  }
++}
++
++const PREMIUM_PAID_ABI = [
++  'event PremiumPaid(bytes32 indexed orderId, address indexed buyer, uint256 amount, bytes32 indexed quoteHash, address token, address treasury, uint256 chainId, uint256 timestamp)'
++];
++
++export function checkoutContractAddress(): string {
++  return (
++    process.env.CHECKOUT_CONTRACT_ADDRESS ||
++    process.env.CHECKOUT_ADDR ||
++    process.env.POLICY_ADDR ||
++    ''
++  ).trim().toLowerCase();
++}
++
++/**
++ * 校验一笔交易确实包含「指定买家支付了指定金额」的 PremiumPaid 事件。
++ *
++ * @param txHash          待核验的交易哈希
++ * @param expectedBuyer   订单归属的钱包地址
++ * @param expectedAmount6d 期望金额（micro-USDC）。传 null 表示不校验金额，
++ *                        由调用方自行比对（例如需要先按事件金额反查订单）。
++ */
++export async function verifyPremiumPaid(params: {
++  txHash: string;
++  expectedBuyer?: string | null;
++  expectedAmount6d?: bigint | null;
++}): Promise<VerifiedPayment> {
++  const { txHash, expectedBuyer = null, expectedAmount6d = null } = params;
++
++  const target = checkoutContractAddress();
++  if (!target) {
++    throw new PaymentVerifyError('SERVER_CONFIG_MISSING', '未配置 CHECKOUT_CONTRACT_ADDRESS', 500);
++  }
++
++  const rpc = (process.env.BASE_RPC || '').trim();
++  if (!rpc) {
++    throw new PaymentVerifyError('SERVER_CONFIG_MISSING', '未配置 BASE_RPC', 500);
++  }
++  const expectedChainId = String(process.env.PAYMENT_CHAIN_ID || '').trim();
++  if (!expectedChainId) {
++    throw new PaymentVerifyError('SERVER_CONFIG_MISSING', '未配置 PAYMENT_CHAIN_ID', 500);
++  }
++
++  const provider = new ethers.JsonRpcProvider(rpc);
++
++  const network = await provider.getNetwork();
++  if (String(network.chainId) !== expectedChainId) {
++    throw new PaymentVerifyError(
++      'RPC_CHAIN_MISMATCH',
++      'BASE_RPC 指向的链与 PAYMENT_CHAIN_ID 不一致',
++      500
++    );
++  }
++
++  const tx = await provider.getTransaction(txHash);
++  if (!tx) {
++    throw new PaymentVerifyError('TX_NOT_FOUND', '交易未找到');
++  }
++
++  const receipt = await provider.getTransactionReceipt(txHash);
++  if (!receipt || receipt.status !== 1) {
++    throw new PaymentVerifyError('TX_FAILED', '交易未上链或执行失败');
++  }
++
++  const minConfirmations = Number(process.env.CONFIRMATIONS || 3);
++  const confirmations = await receipt.confirmations();
++  if (confirmations < minConfirmations) {
++    throw new PaymentVerifyError(
++      'TX_PENDING_CONFIRMATIONS',
++      `确认数不足（${confirmations}/${minConfirmations}），请稍后重试`,
++      202
++    );
++  }
++
++  if ((tx.to || '').toLowerCase() !== target) {
++    throw new PaymentVerifyError('TX_TO_MISMATCH', '交易目标地址不是结算合约');
++  }
++
++  const iface = new ethers.Interface(PREMIUM_PAID_ABI);
++  for (const log of receipt.logs) {
++    if ((log.address || '').toLowerCase() !== target) continue;
++    let parsed: ethers.LogDescription | null = null;
++    try {
++      parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
++    } catch {
++      continue;
++    }
++    if (!parsed || parsed.name !== 'PremiumPaid') continue;
++
++    const buyer = String(parsed.args.buyer);
++    const amount = BigInt(parsed.args.amount);
++
++    if (expectedBuyer && buyer.toLowerCase() !== expectedBuyer.toLowerCase()) continue;
++    if (expectedAmount6d !== null && amount !== expectedAmount6d) continue;
++
++    return {
++      onchainOrderId: String(parsed.args.orderId).toLowerCase(),
++      buyer,
++      amount6d: amount,
++      quoteHash: String(parsed.args.quoteHash).toLowerCase(),
++      txHash,
++      blockNumber: receipt.blockNumber
++    };
++  }
++
++  throw new PaymentVerifyError(
++    'PAYMENT_EVENT_MISMATCH',
++    '交易中未找到与本订单匹配的 PremiumPaid 事件（付款地址或金额不符）'
++  );
++}
++
++export default verifyPremiumPaid;
+diff --git a/apps/us-backend/src/services/quoteService.ts b/apps/us-backend/src/services/quoteService.ts
+index b9c9e8d..fa720d4 100644
+--- a/apps/us-backend/src/services/quoteService.ts
++++ b/apps/us-backend/src/services/quoteService.ts
+@@ -1,5 +1,5 @@
+-import { ProductModel, Product, CreateQuoteRequest, QuoteResponse } from '../models/product';
+-import { QuoteModel, CreateQuoteData } from '../models/quote';
++import { ProductModel, Product, CreateQuoteRequest, QuoteResponse } from '../models/product.js';
++import { QuoteModel, CreateQuoteData } from '../models/quote.js';
+ 
+ export class QuoteService {
+   /**
+diff --git a/apps/us-backend/src/services/verificationService.ts b/apps/us-backend/src/services/verificationService.ts
+index b71299e..d707310 100644
+--- a/apps/us-backend/src/services/verificationService.ts
++++ b/apps/us-backend/src/services/verificationService.ts
+@@ -1,11 +1,22 @@
+ import { randomUUID } from 'crypto';
+-import dbManager from '../database/db.js';
++import { DatabaseManager } from '../database/db.js';
+ import { VerificationResult, VerificationStatus } from '../types/index.js';
+ 
++/**
++ * 修复：原代码把验证记录写在 `dbManager.verifications` 上，而 DatabaseManager
++ * 根本没有这个属性 —— 之所以没报错，是因为构造函数写成
++ * `constructor(dbManager: typeof dbManager)`，参数在自己的类型标注里自引用
++ * （TS2502），整个类型退化成 any，把后面所有错误一起吞掉了。
++ *
++ * 这里把类型修正为 DatabaseManager，并把这份内存态明确放到模块级 Map。
++ * 注意：进程重启即丢失，仅适用于当前的演示用途；要持久化需落到 SQLite 表。
++ */
++const verifications = new Map<string, VerificationResult>();
++
+ export class VerificationService {
+-  private dbManager: typeof dbManager;
++  private dbManager: DatabaseManager;
+ 
+-  constructor(dbManager: typeof dbManager) {
++  constructor(dbManager: DatabaseManager) {
+     this.dbManager = dbManager;
+   }
+ 
+@@ -25,13 +36,13 @@ export class VerificationService {
+       chainId: request.chainId,
+       signature: request.signature,
+       message: request.message,
+-      status: 'pending' as VerificationStatus,
++      status: 'verifying' as VerificationStatus,
+       createdAt: new Date().toISOString(),
+       updatedAt: new Date().toISOString()
+     };
+     
+     // 存储到数据库
+-    this.dbManager.verifications.set(verificationId, verificationRecord);
++    verifications.set(verificationId, verificationRecord);
+     
+     // 模拟异步验证过程
+     setTimeout(() => {
+@@ -40,7 +51,7 @@ export class VerificationService {
+     
+     return {
+       id: verificationId,
+-      status: 'pending'
++      status: 'verifying'
+     };
+   }
+ 
+@@ -49,7 +60,7 @@ export class VerificationService {
+    * @param verificationId 验证ID
+    */
+   private async completeVerification(verificationId: string): Promise<void> {
+-    const verification = this.dbManager.verifications.get(verificationId);
++    const verification = verifications.get(verificationId);
+     
+     if (!verification) {
+       return;
+@@ -59,16 +70,18 @@ export class VerificationService {
+     const isValid = Math.random() > 0.3; // 70% 的概率验证通过
+     
+     // 更新验证记录
+-    const updatedVerification = {
++    // 修复：'approved' / 'rejected' 不是 VerificationStatus 的成员，
++    // 合法值见 types/index.ts（verified / failed）
++    const updatedVerification: VerificationResult = {
+       ...verification,
+-      status: isValid ? 'approved' : 'rejected',
++      status: isValid ? 'verified' : 'failed',
+       result: isValid,
+       reason: isValid ? 'Verification successful' : 'Insufficient trading volume',
+       updatedAt: new Date().toISOString()
+     };
+     
+     // 存储更新后的记录
+-    this.dbManager.verifications.set(verificationId, updatedVerification);
++    verifications.set(verificationId, updatedVerification);
+   }
+ 
+   /**
+@@ -77,7 +90,7 @@ export class VerificationService {
+    * @returns 验证结果
+    */
+   async getVerificationResult(verificationId: string): Promise<VerificationResult | null> {
+-    const verification = this.dbManager.verifications.get(verificationId);
++    const verification = verifications.get(verificationId);
+     
+     if (!verification) {
+       return null;
+@@ -85,6 +98,7 @@ export class VerificationService {
+     
+     return {
+       id: verification.id,
++      walletAddress: verification.walletAddress,
+       status: verification.status,
+       result: verification.result,
+       reason: verification.reason,
+@@ -102,7 +116,7 @@ export class VerificationService {
+    */
+   async getVerificationHistory(walletAddress: string, limit: number = 10, offset: number = 0): Promise<any[]> {
+     // 获取所有验证记录
+-    const allVerifications = Array.from(this.dbManager.verifications.values());
++    const allVerifications = Array.from(verifications.values());
+     
+     // 过滤指定钱包地址的记录
+     const filteredVerifications = allVerifications.filter(v => v.walletAddress === walletAddress);
+diff --git a/apps/us-backend/src/types/ambient.d.ts b/apps/us-backend/src/types/ambient.d.ts
+index 037c687..d14ff4b 100644
+--- a/apps/us-backend/src/types/ambient.d.ts
++++ b/apps/us-backend/src/types/ambient.d.ts
+@@ -1,3 +1,6 @@
++// 注意：better-sqlite3 的类型由 @types/better-sqlite3 提供（见 devDependencies）。
++// 原先这里有一条 `declare module 'better-sqlite3';` 简写声明，会把该模块整体
++// 退化成 any，正是它掩盖了 dao/ 与 models/ 里「用 node-sqlite3 回调风格调用
++// 同步 API」的问题。
+ declare module 'swagger-ui-express';
+ declare module 'yamljs';
+-declare module 'better-sqlite3';
+diff --git a/apps/us-backend/src/types/index.ts b/apps/us-backend/src/types/index.ts
+index f0e7e38..ae3f305 100644
+--- a/apps/us-backend/src/types/index.ts
++++ b/apps/us-backend/src/types/index.ts
+@@ -9,6 +9,23 @@ export type Exchange = 'OKX' | 'Binance' | 'Hyperliquid';
+ export type Environment = 'live' | 'testnet';
+ export type VerificationStatus = 'draft' | 'unverified' | 'verifying' | 'verified' | 'failed' | 'disabled' | 'deleted';
+ 
++/**
++ * 修复：verificationService.ts 一直在 import { VerificationResult }，
++ * 但本文件从未定义过它（TS2305）。按其实际用法补上。
++ */
++export interface VerificationResult {
++  id: string;
++  walletAddress: string;
++  chainId?: number | string;
++  signature?: string;
++  message?: string;
++  status: VerificationStatus;
++  result?: boolean;
++  reason?: string;
++  createdAt: string;
++  updatedAt: string;
++}
++
+ export type Caps = {
+   orders: boolean;
+   fills: boolean;
+diff --git a/apps/us-backend/src/utils/requireEnv.ts b/apps/us-backend/src/utils/requireEnv.ts
+new file mode 100644
+index 0000000..f891494
+--- /dev/null
++++ b/apps/us-backend/src/utils/requireEnv.ts
+@@ -0,0 +1,22 @@
++/**
++ * 强制从环境变量读取敏感配置；缺失时直接抛错（fail-fast），
++ * 禁止任何硬编码私钥/密钥兜底值。
++ */
++export function requireEnv(name: string, ...fallbackNames: string[]): string {
++  for (const n of [name, ...fallbackNames]) {
++    const v = (process.env[n] || '').trim();
++    if (v) return v;
++  }
++  throw new Error(
++    `[config] 缺少必需的环境变量 ${[name, ...fallbackNames].join(' / ')}。` +
++    `请在 .env 中配置后再启动服务（严禁使用硬编码默认值）。`
++  );
++}
++
++/** 延迟求值：只有真正用到时才校验，避免未配置的可选模块阻塞进程启动。 */
++export function lazyEnv(name: string, ...fallbackNames: string[]): () => string {
++  let cached: string | null = null;
++  return () => (cached ??= requireEnv(name, ...fallbackNames));
++}
++
++export default requireEnv;
+diff --git a/apps/us-backend/tsconfig.build.json b/apps/us-backend/tsconfig.build.json
+index f7c145a..eb77cda 100644
+--- a/apps/us-backend/tsconfig.build.json
++++ b/apps/us-backend/tsconfig.build.json
+@@ -9,6 +9,7 @@
+     "noEmit": false
+   },
+   "include": [
++    "src/loadEnv.ts",
+     "src/server.ts",
+     "src/app.ts",
+     "src/routes/index.ts",
+diff --git a/apps/us-frontend/package.json b/apps/us-frontend/package.json
+index ef6ee73..6eb6d42 100644
+--- a/apps/us-frontend/package.json
++++ b/apps/us-frontend/package.json
+@@ -18,7 +18,8 @@
+     "test:e2e:debug": "playwright test --debug",
+     "test:e2e:ui": "playwright test --ui",
+     "test:coverage": "npm run test:unit:coverage && npm run test:e2e",
+-    "test:report": "playwright show-report"
++    "test:report": "playwright show-report",
++    "clean": "rm -rf dist node_modules/.vite"
+   },
+   "dependencies": {
+     "@radix-ui/react-label": "^2.1.7",
+diff --git a/apps/us-frontend/src/contexts/LoadingContext.tsx b/apps/us-frontend/src/contexts/LoadingContext.tsx
+index 98f10a8..0c58561 100644
+--- a/apps/us-frontend/src/contexts/LoadingContext.tsx
++++ b/apps/us-frontend/src/contexts/LoadingContext.tsx
+@@ -24,7 +24,9 @@ interface LoadingContextValue {
+   componentLoading: Map<string, boolean>;
+   
+   // 操作方法
+-  showLoading: (options?: LoadingState) => string;
++  // 修复：调用方传的都是 { type, message } 这类片段，isLoading 由实现内部置为 true，
++  // 原签名要求完整的 LoadingState，默认值 {} 直接类型报错（TS2741）。
++  showLoading: (options?: Partial<LoadingState>) => string;
+   hideLoading: (id?: string) => void;
+   updateLoading: (id: string, updates: Partial<LoadingState>) => void;
+   showComponentLoading: (componentId: string, message?: string) => void;
+@@ -59,7 +61,7 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({
+   const nextIdRef = useRef(1);
+ 
+   // 显示加载状态
+-  const showLoading = useCallback((options: LoadingState = {}): string => {
++  const showLoading = useCallback((options: Partial<LoadingState> = {}): string => {
+     const id = options.id || `loading-${nextIdRef.current++}`;
+     const loadingState: LoadingState = {
+       isLoading: true,
+diff --git a/apps/us-frontend/src/contexts/ToastContext.tsx b/apps/us-frontend/src/contexts/ToastContext.tsx
+index 5e60ba2..ada367d 100644
+--- a/apps/us-frontend/src/contexts/ToastContext.tsx
++++ b/apps/us-frontend/src/contexts/ToastContext.tsx
+@@ -1,6 +1,6 @@
+ import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+-import { ToastItem } from '../types.ts';
+-import { generateId } from '../utils.ts';
++import { ToastItem } from '../types';
++import { generateId } from '../utils';
+ 
+ interface ToastContextType {
+   push: (toast: Omit<ToastItem, 'id'>) => void;
+diff --git a/apps/us-frontend/src/debug/fetchForcePremium.ts b/apps/us-frontend/src/debug/fetchForcePremium.ts
+index 2cb86a9..ba15277 100644
+--- a/apps/us-frontend/src/debug/fetchForcePremium.ts
++++ b/apps/us-frontend/src/debug/fetchForcePremium.ts
+@@ -86,3 +86,6 @@ window.fetch = (async (input: FetchInput, init?: RequestInit): Promise<Response>
+   return _fetch(input, init);
+ }) as any;
+ 
++// 该文件通过 `await import()` 动态加载，必须是 ES 模块；
++// 原先没有任何 import/export，TS 视其为全局脚本（TS2306）。
++export {};
+diff --git a/apps/us-frontend/src/hooks/useApi.ts b/apps/us-frontend/src/hooks/useApi.ts
+index c82ce2d..5a5eab6 100644
+--- a/apps/us-frontend/src/hooks/useApi.ts
++++ b/apps/us-frontend/src/hooks/useApi.ts
+@@ -4,9 +4,9 @@
+  */
+ 
+ import { useState, useCallback, useRef } from 'react';
+-import { useLoading } from '../contexts/LoadingContext.tsx';
+-import { api, ApiError, safeApiCall } from '../services/api.ts';
+-import { useToast } from '../contexts/ToastContext.tsx';
++import { useLoading } from '../contexts/LoadingContext';
++import { api, ApiError, safeApiCall } from '../services/api';
++import { useToast } from '../contexts/ToastContext';
+ 
+ // API Hook配置接口
+ interface UseApiOptions {
+diff --git a/apps/us-frontend/src/lib/payPolicy.ts b/apps/us-frontend/src/lib/payPolicy.ts
+index 7e64c23..c928d25 100644
+--- a/apps/us-frontend/src/lib/payPolicy.ts
++++ b/apps/us-frontend/src/lib/payPolicy.ts
+@@ -1,5 +1,5 @@
+ import { ethers } from 'ethers';
+-import api from '../services/api.ts';
++import api from '../services/api';
+ import {
+   BASE_USDC_ADDRESS,
+   CHECKOUT_CONTRACT_ADDRESS,
+@@ -56,22 +56,25 @@ export async function payPolicy(amountUSDC: string) {
+   }
+ 
+   const orderId = ethers.id(`${address}:${Date.now()}:${Math.random()}`);
+-  let quoteHash: string | undefined;
++
++  // 修复：原实现在后端 /quote-hash 调用失败时，会**本地伪造**一个随机 quoteHash。
++  // 该哈希从未在合约里注册过，buyPolicy 必定 revert（"invalid or expired quote hash"），
++  // 用户却先付掉了一笔 approve 的 gas，且拿不到任何有效报错。
++  // 报价必须来自后端，拿不到就明确失败。
++  let quoteHash: string;
+   if (typeof STATIC_QUOTE_HASH === 'string' && /^0x[a-fA-F0-9]{64}$/.test(STATIC_QUOTE_HASH)) {
+     quoteHash = STATIC_QUOTE_HASH;
+   } else {
+-    try {
+-      const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>('/api/v1/pricing/quote-hash', {
+-        wallet: address,
+-        amountUSDC
+-      }, { requireAuth: false });
+-      quoteHash = (quoteResp as any)?.data?.quoteHash;
+-    } catch {
+-      quoteHash = ethers.id(`${address}:${amountUSDC}:${Date.now()}`);
+-    }
+-    if (!quoteHash || !/^0x[a-fA-F0-9]{64}$/.test(quoteHash)) {
+-      quoteHash = ethers.id(`${address}:${amountUSDC}:${Date.now()}`);
++    const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>(
++      '/api/v1/pricing/quote-hash',
++      { wallet: address, orderId, amountUSDC },
++      { requireAuth: true }
++    );
++    const got = (quoteResp as any)?.data?.quoteHash;
++    if (!got || !/^0x[a-fA-F0-9]{64}$/.test(got)) {
++      throw new Error('未能从服务端获取有效报价（quoteHash），请稍后重试');
+     }
++    quoteHash = got;
+   }
+   const usdc = new ethers.Contract(BASE_USDC_ADDRESS, ERC20_ABI, signer);
+   const allowance: bigint = await usdc.allowance(address, CHECKOUT_CONTRACT_ADDRESS);
+@@ -88,15 +91,23 @@ export async function payPolicy(amountUSDC: string) {
+   return { orderId, txHash: receipt?.hash ?? buyTx.hash };
+ }
+ 
+-export async function payAndSubmit(amountUSDC: string) {
++export async function payAndSubmit(
++  amountUSDC: string,
++  meta?: { principal?: number; leverage?: number }
++) {
+   const { orderId, txHash } = await payPolicy(amountUSDC);
+   try {
+-    const { signer, address } = await connectAndEnsureBase();
+-    await fetch('/api/v1/orders/minimal-create', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ orderId, wallet: address, premiumUSDC: Number(amountUSDC) })
+-    });
++    const { address } = await connectAndEnsureBase();
++    // 后端现在要求：① 钱包登录态（只能为自己建单）②带上 txHash 并由服务端
++    // 核验链上 PremiumPaid 事件，保费以链上实际金额为准。
++    // 原先用裸 fetch 不带任何凭证，改走 api 客户端以附上 Authorization。
++    await api.post('/api/v1/orders/minimal-create', {
++      orderId,
++      wallet: address,
++      txHash,
++      principal: meta?.principal,
++      leverage: meta?.leverage
++    }, { requireAuth: true });
+   } catch {}
+   try {
+     await fetch(`/api/v1/orders/${orderId}/submit-tx`, {
+@@ -118,23 +129,23 @@ export async function payPolicyWithWallet(
+   const amount = ethers.parseUnits(String(params.amountUsdc), USDC_DECIMALS);
+   if (amount <= 0n) throw new Error('请输入有效的 USDC 金额');
+   const orderId = ethers.id(`${wallet.address}:${Date.now()}:${Math.random()}`);
+-  let quoteHash: string | undefined;
++  // 与 payPolicy() 同样的修复：拿不到后端报价时，原实现会本地伪造一个
++  // 从未在合约注册过的 quoteHash，buyPolicy 必定 revert，用户却已先付掉
++  // approve 的 gas。报价必须来自后端。
++  let quoteHash: string;
+   if (typeof STATIC_QUOTE_HASH === 'string' && /^0x[a-fA-F0-9]{64}$/.test(STATIC_QUOTE_HASH)) {
+     quoteHash = STATIC_QUOTE_HASH;
+   } else {
+-    try {
+-      const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>(
+-        '/api/v1/pricing/quote-hash',
+-        { wallet: wallet.address, amountUSDC: String(params.amountUsdc) },
+-        { requireAuth: false }
+-      );
+-      quoteHash = (quoteResp as any)?.data?.quoteHash;
+-    } catch {
+-      quoteHash = ethers.id(`${wallet.address}:${String(params.amountUsdc)}:${Date.now()}`);
+-    }
+-    if (!quoteHash || !/^0x[a-fA-F0-9]{64}$/.test(quoteHash)) {
+-      quoteHash = ethers.id(`${wallet.address}:${String(params.amountUsdc)}:${Date.now()}`);
++    const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>(
++      '/api/v1/pricing/quote-hash',
++      { wallet: wallet.address, orderId, amountUSDC: String(params.amountUsdc) },
++      { requireAuth: true }
++    );
++    const got = (quoteResp as any)?.data?.quoteHash;
++    if (!got || !/^0x[a-fA-F0-9]{64}$/.test(got)) {
++      throw new Error('未能从服务端获取有效报价（quoteHash），请稍后重试');
+     }
++    quoteHash = got;
+   }
+   const usdc = new ethers.Contract(BASE_USDC_ADDRESS, ERC20_ABI, signer);
+   const allowance: bigint = await usdc.allowance(wallet.address, CHECKOUT_CONTRACT_ADDRESS);
+diff --git a/apps/us-frontend/src/lib/premiumUSDCTransform.spec.ts b/apps/us-frontend/src/lib/premiumUSDCTransform.spec.ts
+index a3c27bd..781a6f7 100644
+--- a/apps/us-frontend/src/lib/premiumUSDCTransform.spec.ts
++++ b/apps/us-frontend/src/lib/premiumUSDCTransform.spec.ts
+@@ -1,9 +1,11 @@
+ import { describe, expect, it } from 'vitest';
+-import { normalizePremiumUSDCFields } from './premiumUSDCTransform.ts';
++import { normalizePremiumUSDCFields, type JsonValue } from './premiumUSDCTransform';
+ 
+ describe('normalizePremiumUSDCFields', () => {
+   it('should convert premiumUSDC fields recursively', () => {
+-    const payload = {
++    // 显式标注为 JsonValue：否则 TS 会给数组元素推断出 `premiumUSDC?: undefined`
++    // 这类可选-undefined 联合，与 JsonValue 不兼容，导致 `tsc && vite build` 失败。
++    const payload: JsonValue = {
+       premiumUSDC: 0.5,
+       nested: {
+         premiumUSDC: '1.25',
+diff --git a/apps/us-frontend/src/lib/premiumUSDCTransform.ts b/apps/us-frontend/src/lib/premiumUSDCTransform.ts
+index d1a7911..bb34e48 100644
+--- a/apps/us-frontend/src/lib/premiumUSDCTransform.ts
++++ b/apps/us-frontend/src/lib/premiumUSDCTransform.ts
+@@ -1,4 +1,4 @@
+-import { toUSDC6d } from './usdcUtils.ts';
++import { toUSDC6d } from './usdcUtils';
+ 
+ export type JsonValue =
+   | string
+diff --git a/apps/us-frontend/src/main.tsx b/apps/us-frontend/src/main.tsx
+index 91ab752..a5ba45b 100644
+--- a/apps/us-frontend/src/main.tsx
++++ b/apps/us-frontend/src/main.tsx
+@@ -1,6 +1,6 @@
+ import React from 'react'
+ import ReactDOM from 'react-dom/client'
+-import App from './App.tsx'
++import App from './App'
+ import './index.css'
+ import installAuthFetch from './lib/authFetch'
+ 
+@@ -10,8 +10,10 @@ installAuthFetch()
+ // 可选：通过 ?force01 开启 0.01 USDC 强制支付调试拦截
+ try {
+   const qs = new URLSearchParams(location.search);
+-  if (qs.has('force01')) {
+-    // 动态引入，避免默认影响生产
++  // 修复：原实现只看 ?force01，生产环境同样生效 —— 任何人给线上地址加上
++  // ?force01 就能劫持 window.fetch，把保费改写成 0.01 USDC 并本地伪造凭证。
++  // 现在仅在开发构建中允许启用。
++  if (qs.has('force01') && import.meta.env.DEV) {
+     await import('./debug/fetchForcePremium');
+     console.warn('[debug] fetchForcePremium enabled: premium forced to 0.01 USDC');
+   }
+diff --git a/apps/us-frontend/src/pages/Payment.tsx b/apps/us-frontend/src/pages/Payment.tsx
+index 8be4ccf..921addc 100644
+--- a/apps/us-frontend/src/pages/Payment.tsx
++++ b/apps/us-frontend/src/pages/Payment.tsx
+@@ -6,6 +6,7 @@ import { BASE_USDC_ADDRESS, CHECKOUT_CONTRACT_ADDRESS } from '../constants';
+ import { ConnectOrPayButton } from '../components/ConnectOrPayButton';
+ import { WalletConnectionResult } from '../lib/wallet';
+ import { payPolicyWithWallet } from '../lib/payPolicy';
++import api from '../services/api';
+ 
+ export const Payment: React.FC = () => {
+   const navigate = useNavigate();
+@@ -47,20 +48,19 @@ export const Payment: React.FC = () => {
+     setIsProcessing(true);
+     try {
+       const result = await payPolicyWithWallet({ amountUsdc: Number(amount) }, { address: wallet.address, ethereum: wallet.ethereum });
+-      try {
+-        await fetch('/api/v1/orders/minimal-create', {
+-          method: 'POST',
+-          headers: { 'Content-Type': 'application/json' },
+-          body: JSON.stringify({ orderId: result.orderId, wallet: wallet.address, premiumUSDC: Number(amount) })
+-        });
+-      } catch {}
+-      try {
+-        await fetch(`/api/v1/orders/${result.orderId}/submit-tx`, {
+-          method: 'POST',
+-          headers: { 'Content-Type': 'application/json' },
+-          body: JSON.stringify({ txHash: result.txHash })
+-        });
+-      } catch {}
++
++      // 修复三处：
++      // ① 原先用裸 fetch 不带任何登录凭证，而后端现在要求钱包登录态
++      // ② minimal-create 原先传 premiumUSDC（客户端申报金额），后端已改为
++      //    必须带 txHash 并按链上 PremiumPaid 事件取实际金额
++      // ③ 两个调用都包在 try{}catch{} 里静默吞掉，后端全部拒绝时用户依然看到
++      //    「支付完成」。现在失败会如实告知。
++      await api.post('/api/v1/orders/minimal-create', {
++        orderId: result.orderId,
++        wallet: wallet.address,
++        txHash: result.txHash
++      }, { requireAuth: true });
++
+       push({
+         title: '支付完成，等待链上确认',
+         desc: `orderId=${result.orderId.slice(0, 10)}…`
+diff --git a/apps/us-frontend/src/pages/Products.tsx b/apps/us-frontend/src/pages/Products.tsx
+index 2427fa6..8f8f68a 100644
+--- a/apps/us-frontend/src/pages/Products.tsx
++++ b/apps/us-frontend/src/pages/Products.tsx
+@@ -15,14 +15,9 @@ const POLICY_ADDR: string =
+   (import.meta as any).env?.VITE_POLICY_ADDR ||
+   '0x0000000000000000000000000000000000000000';
+ const USDC_ADDR = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base USDC(6d)
+-const ERC20_ABI = [
+-  'function allowance(address owner,address spender) view returns (uint256)',
+-  'function approve(address spender,uint256 amount) returns (bool)'
+-];
+-const POLICY_ABI = [
+-  'function buyPolicy((address wallet,uint32 skuId,bytes32 exchangeId,bytes32 accountHash,uint256 deadline,uint256 nonce,bytes32 voucherId),bytes,(address wallet,bytes32 inputHash,uint96 price,uint96 maxPayout,uint32 durationHours,bytes32 quoteId,uint256 deadline,uint256 chainId,address contractAddr),bytes,uint32 skuId,uint96 notional,bytes32 verifyHash) returns (uint256)',
+-  'event PolicyPurchased(uint256 indexed policyId,address indexed buyer,uint32 skuId,uint96 price,bytes32 quoteId,bytes32 inputHash,bytes32 verifyHash)'
+-];
++// 说明：此处原有一份 POLICY_ABI（7 参数的凭证版 buyPolicy）与一份 ERC20_ABI，
++// 两者在本文件中从未被引用 —— 实际支付走的是 lib/payPolicy.ts 里的
++// buyPolicy(bytes32,uint256,bytes32)。已删除，避免误以为存在两套支付路径。
+ 
+ // 公共函数
+ const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+@@ -85,8 +80,18 @@ export const Products: React.FC = () => {
+       if ((chainId || '').toLowerCase() !== '0x2105') {
+         await switchToBase(false);
+       }
+-      const amountUSDC = '0.01';
+-      const res = await payAndSubmit(amountUSDC);
++      // 修复：这里原先写死 amountUSDC = '0.01'，无论页面上算出多少保费，
++      // 实际只收 0.01 USDC，而本地订单记录里却写入完整的 premiumPaid / payoutMax。
++      // 现在按页面展示的保费收取。
++      const amountUSDC = (Math.round(Number(feeAmt || 0) * 1e6) / 1e6).toFixed(6);
++      if (!(Number(amountUSDC) > 0)) {
++        push({ title: '保费计算异常 / Invalid premium' });
++        return;
++      }
++      const res = await payAndSubmit(amountUSDC, {
++        principal: clamp(principal, MIN_P, MAX_P),
++        leverage: ensureInt(lev)
++      });
+       push({ title: '已发起支付 / Payment started', desc: `tx=${(res?.txHash || '').slice(0, 10)}…` });
+       try {
+         const now = Date.now();
+diff --git a/apps/us-frontend/src/types.ts b/apps/us-frontend/src/types.ts
+index 0a57e2e..b5c6e01 100644
+--- a/apps/us-frontend/src/types.ts
++++ b/apps/us-frontend/src/types.ts
+@@ -199,4 +199,26 @@ export interface Dictionary {
+ export interface ApiConfig {
+   base: string;
+   readKey: string;
+-}
+\ No newline at end of file
++}
++
++/**
++ * 支付链接。
++ * 修复：Links.tsx 一直在 `import { PaymentLink } from '../types'`，
++ * 但本文件从未定义过它（TS2305）。按页面实际用到的字段补上。
++ * 注意与后端 apps/us-backend/src/models/paymentLink.ts 的差异：
++ * 后端的 status 是 'pending' | 'paid' | 'expired'，createdAt 是 ISO 字符串，
++ * 且没有 usageCount。接后端真实数据时需要对齐这三处。
++ */
++export type PaymentLinkStatus = 'active' | 'inactive';
++
++export interface PaymentLink {
++  id: string;
++  product: string;
++  symbol: string;
++  amount: number;
++  duration: number;
++  url: string;
++  status: PaymentLinkStatus;
++  usageCount: number;
++  createdAt: number;
++}
+diff --git a/contracts/CheckoutUSDC.sol b/contracts/CheckoutUSDC.sol
+index 34a8f1b..dbfde39 100644
+--- a/contracts/CheckoutUSDC.sol
++++ b/contracts/CheckoutUSDC.sol
+@@ -22,6 +22,9 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
+     /// @notice Base主网USDC标准地址（用于验证）
+     address public constant BASE_USDC = 0x833589fCD6EdB6E08f4c7C32D4f71B54Bda02913;
+ 
++    /// @notice Base 主网 chainid
++    uint256 public constant BASE_CHAIN_ID = 8453;
++
+     /// @notice USDC精度（6位小数）
+     uint256 public constant USDC_DECIMALS = 6;
+ 
+@@ -31,6 +34,9 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
+     /// @notice quoteHash有效期映射（秒）
+     mapping(bytes32 => uint256) public quoteHashExpiry;
+ 
++    /// @notice 报价最长有效期，避免误传一个极远的过期时间导致长期可用
++    uint256 public constant MAX_QUOTE_TTL = 1 hours;
++
+     /// @dev 下单支付事件
+     event PremiumPaid(
+         bytes32 indexed orderId,
+@@ -51,7 +57,12 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
+     /// @param treasury_ 初始金库地址（你控制私钥的地址）
+     constructor(address usdc_, address treasury_) Ownable(msg.sender) {
+         require(usdc_ != address(0) && treasury_ != address(0), "zero addr");
+-        require(usdc_ == BASE_USDC, "invalid usdc address");
++        // 修复：原先无条件要求 usdc_ == BASE_USDC，等于把合约钉死在 Base 主网，
++        // 任何测试网、本地链都无法部署 —— 也就没有办法在上主网前跑通一次完整流程。
++        // 现在只在 Base 主网（chainid 8453）上强制校验官方 USDC 地址。
++        if (block.chainid == BASE_CHAIN_ID) {
++            require(usdc_ == BASE_USDC, "invalid usdc address");
++        }
+         USDC = IERC20(usdc_);
+         treasury = treasury_;
+     }
+@@ -68,52 +79,84 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
+     function pause()   external onlyOwner { _pause(); }
+     function unpause() external onlyOwner { _unpause(); }
+ 
++    /// @notice 由「买家 + 订单号 + 金额」唯一确定的报价承诺
++    /// @dev 修复：原设计里 quoteHash 是一个和订单无关的裸哈希，
++    ///      而 registerQuoteHash 又会公开 emit 出来。任何人都能抄走一个
++    ///      尚未过期的 quoteHash，用**自己的** orderId 和**任意**金额调用
++    ///      buyPolicy —— 报价里承诺的买家/金额/金库完全没有被强制执行。
++    ///      现在 quoteHash 必须等于对 (buyer, orderId, amount) 的承诺。
++    function quoteCommitment(address buyer, bytes32 orderId, uint256 amount)
++        public
++        pure
++        returns (bytes32)
++    {
++        return keccak256(abi.encode(buyer, orderId, amount));
++    }
++
+     /// @notice 注册quoteHash并设置有效期
+-    /// @param quoteHash 报价哈希
++    /// @param quoteHash 必须由 quoteCommitment(buyer, orderId, amount) 计算得到
+     /// @param expiryTime 过期时间（Unix时间戳）
+-    function registerQuoteHash(bytes32 quoteHash, uint256 expiryTime) external onlyOwner {
++    function registerQuoteHash(bytes32 quoteHash, uint256 expiryTime) public onlyOwner {
++        require(quoteHash != bytes32(0), "zero quote hash");
+         require(expiryTime > block.timestamp, "invalid expiry time");
++        require(expiryTime <= block.timestamp + MAX_QUOTE_TTL, "expiry too far");
+         quoteHashExpiry[quoteHash] = expiryTime;
+         emit QuoteHashRegistered(quoteHash, expiryTime);
+     }
+ 
++    /// @notice 便捷入口：直接按 (buyer, orderId, amount) 注册报价
++    function registerQuote(address buyer, bytes32 orderId, uint256 amount, uint256 expiryTime)
++        external
++        onlyOwner
++        returns (bytes32 quoteHash)
++    {
++        quoteHash = quoteCommitment(buyer, orderId, amount);
++        registerQuoteHash(quoteHash, expiryTime);
++    }
++
+     /// @notice 验证quoteHash是否有效
+     /// @param quoteHash 要验证的报价哈希
+     function isValidQuoteHash(bytes32 quoteHash) public view returns (bool) {
+         return quoteHashExpiry[quoteHash] > block.timestamp;
+     }
+ 
+-    /// @notice 验证USDC金额是否有效（6位精度，步长1e-6）
+-    /// @param amount 要验证的金额
+-    function isValidAmount(uint256 amount) public pure returns (bool) {
+-        // 检查金额大于0
+-        if (amount == 0) return false;
+-        
+-        // 检查金额不超过最大安全值（防止溢出）
+-        if (amount > type(uint128).max) return false;
+-        
+-        // 检查精度：金额必须是1e6的整数倍
+-        return amount % (10 ** USDC_DECIMALS) == 0;
++    /// @notice 单笔支付上限（micro-USDC），与链下业务规则一致，可由 owner 调整
++    uint256 public maxAmount = 100 * (10 ** USDC_DECIMALS); // 100 USDC
++
++    /// @notice 单笔支付下限（micro-USDC）
++    uint256 public minAmount = 10_000; // 0.01 USDC
++
++    event AmountLimitsUpdated(uint256 minAmount, uint256 maxAmount);
++
++    function setAmountLimits(uint256 newMin, uint256 newMax) external onlyOwner {
++        require(newMin > 0 && newMin <= newMax, "invalid limits");
++        minAmount = newMin;
++        maxAmount = newMax;
++        emit AmountLimitsUpdated(newMin, newMax);
+     }
+-    
+-    /// @notice 验证并标准化USDC金额
+-    /// @param amount 要验证的金额
+-    function validateAndNormalizeAmount(uint256 amount) public pure returns (uint256) {
++
++    /// @notice 验证USDC金额是否有效
++    /// @dev 修复：原实现写的是 `amount % 1e6 == 0`，即只接受**整数个 USDC**，
++    ///      与 USDC_AMOUNT_RULES.md 里「步长 1e-6、最小 0.01 USDC」的规则直接冲突，
++    ///      也导致后端算出的任何带小数的保费（绝大多数）在链上必然 revert。
++    ///      USDC 本身就是 6 位精度，链上金额已经是最小单位整数，无需再取模。
++    /// @param amount 要验证的金额（micro-USDC）
++    function isValidAmount(uint256 amount) public view returns (bool) {
++        return amount >= minAmount && amount <= maxAmount;
++    }
++
++    /// @notice 验证金额
++    /// @param amount 要验证的金额（micro-USDC）
++    function validateAndNormalizeAmount(uint256 amount) public view returns (uint256) {
+         require(isValidAmount(amount), "invalid amount");
+-        
+-        // 标准化金额：去除可能的尾随零
+-        uint256 normalizedAmount = amount / (10 ** USDC_DECIMALS) * (10 ** USDC_DECIMALS);
+-        
+-        // 确保标准化后金额不变
+-        require(normalizedAmount == amount, "amount normalization failed");
+-        
+-        return normalizedAmount;
++        return amount;
+     }
+ 
+     /// @notice 用户先对 USDC 执行 approve(CheckoutUSDC, amount)，再调用本函数完成支付
+     /// @param orderId   订单ID（建议 keccak(UUID)，传 bytes32）
+     /// @param amount    USDC 数量（6 位精度）
+-    /// @param quoteHash 报价快照哈希（后端生成，承诺买家/金额/金库/有效期等）
++    /// @param quoteHash 报价承诺，必须等于 quoteCommitment(msg.sender, orderId, amount)
++    ///                  且由 owner 通过 registerQuote / registerQuoteHash 预先注册
+     function buyPolicy(bytes32 orderId, uint256 amount, bytes32 quoteHash)
+         external
+         nonReentrant
+@@ -121,19 +164,21 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
+     {
+         // 验证订单是否已处理
+         require(!orderProcessed[orderId], "order already processed");
+-        
+-        // 验证并标准化金额
++
++        // 验证金额
+         uint256 normalizedAmount = validateAndNormalizeAmount(amount);
+-        
+-        // 验证quoteHash有效性
++
++        // 修复：quoteHash 必须与本次 (买家, 订单号, 金额) 严格绑定，
++        // 防止盗用他人报价或改价支付
++        require(
++            quoteHash == quoteCommitment(msg.sender, orderId, normalizedAmount),
++            "quote hash not bound to this purchase"
++        );
+         require(isValidQuoteHash(quoteHash), "invalid or expired quote hash");
+-        
+-        // 验证USDC余额和授权
+-        require(USDC.balanceOf(msg.sender) >= amount, "insufficient USDC balance");
+-        require(USDC.allowance(msg.sender, address(this)) >= amount, "insufficient USDC allowance");
+-        
+-        // 标记订单为已处理
++
++        // 标记订单为已处理，并作废该报价（一次性使用）
+         orderProcessed[orderId] = true;
++        delete quoteHashExpiry[quoteHash];
+         
+         // 直接转入金库，不在合约囤资
+         USDC.safeTransferFrom(msg.sender, treasury, normalizedAmount);
+@@ -193,6 +238,6 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
+ 
+     /// @notice 合约版本标识（便于前端/后端校验）
+     function version() external pure returns (string memory) {
+-        return "checkout-usdc/1.0.1";                  // ✅ 小版本号
++        return "checkout-usdc/1.1.0";                  // quoteHash 绑定 + 金额规则修复
+     }
+ }
+\ No newline at end of file
+diff --git a/package.json b/package.json
+index 6879666..6f889f1 100644
+--- a/package.json
++++ b/package.json
+@@ -10,16 +10,19 @@
+     "leverageguard-docs"
+   ],
+   "scripts": {
+-    "dev": "concurrently \"pnpm --filter us-frontend dev\" \"pnpm --filter us-backend dev\"",
+-    "build": "pnpm --filter us-frontend build && pnpm --filter us-backend build",
+-    "test": "pnpm --filter us-frontend test && pnpm --filter us-backend test",
+-    "lint": "pnpm --filter us-frontend lint && pnpm --filter us-backend lint",
+-    "clean": "pnpm --filter us-frontend clean && pnpm --filter us-backend clean",
++    "dev": "concurrently \"pnpm --filter liqpass-frontend dev\" \"pnpm --filter us-backend dev\"",
++    "build": "pnpm --filter liqpass-frontend build && pnpm --filter us-backend build",
++    "test": "pnpm --filter liqpass-frontend test && pnpm --filter us-backend test",
++    "lint": "pnpm --filter liqpass-frontend lint && pnpm --filter us-backend lint",
++    "clean": "pnpm --filter liqpass-frontend clean && pnpm --filter us-backend clean",
+     "docs:check-links": "node scripts/docs-update.js check-links",
+     "docs:lint": "node scripts/docs-update.js lint",
+     "docs:changelog": "node scripts/docs-update.js changelog",
+     "docs:status": "node scripts/docs-update.js status",
+-    "docs:full-check": "node scripts/docs-update.js full-check"
++    "docs:full-check": "node scripts/docs-update.js full-check",
++    "setup:env": "node apps/us-backend/scripts/setup-dev-env.mjs",
++    "typecheck": "pnpm --filter us-backend exec tsc --noEmit && pnpm --filter liqpass-frontend exec tsc --noEmit",
++    "verify": "pnpm typecheck && pnpm build"
+   },
+   "devDependencies": {
+     "@nomicfoundation/hardhat-ethers": "^4.0.3",
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 3b498e6..f25edbd 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -1,4 +1,5 @@
+ packages:
+   - 'apps/*'
++  - 'packages/*'
+   - 'liqpass-verify'
+   - 'leverageguard-docs'
+\ No newline at end of file

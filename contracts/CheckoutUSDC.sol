@@ -22,6 +22,9 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
     /// @notice Base主网USDC标准地址（用于验证）
     address public constant BASE_USDC = 0x833589fCD6EdB6E08f4c7C32D4f71B54Bda02913;
 
+    /// @notice Base 主网 chainid
+    uint256 public constant BASE_CHAIN_ID = 8453;
+
     /// @notice USDC精度（6位小数）
     uint256 public constant USDC_DECIMALS = 6;
 
@@ -54,7 +57,12 @@ contract CheckoutUSDC is Ownable, Pausable, ReentrancyGuard {
     /// @param treasury_ 初始金库地址（你控制私钥的地址）
     constructor(address usdc_, address treasury_) Ownable(msg.sender) {
         require(usdc_ != address(0) && treasury_ != address(0), "zero addr");
-        require(usdc_ == BASE_USDC, "invalid usdc address");
+        // 修复：原先无条件要求 usdc_ == BASE_USDC，等于把合约钉死在 Base 主网，
+        // 任何测试网、本地链都无法部署 —— 也就没有办法在上主网前跑通一次完整流程。
+        // 现在只在 Base 主网（chainid 8453）上强制校验官方 USDC 地址。
+        if (block.chainid == BASE_CHAIN_ID) {
+            require(usdc_ == BASE_USDC, "invalid usdc address");
+        }
         USDC = IERC20(usdc_);
         treasury = treasury_;
     }

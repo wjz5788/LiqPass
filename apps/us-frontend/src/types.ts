@@ -200,3 +200,25 @@ export interface ApiConfig {
   base: string;
   readKey: string;
 }
+
+/**
+ * 支付链接。
+ * 修复：Links.tsx 一直在 `import { PaymentLink } from '../types'`，
+ * 但本文件从未定义过它（TS2305）。按页面实际用到的字段补上。
+ * 注意与后端 apps/us-backend/src/models/paymentLink.ts 的差异：
+ * 后端的 status 是 'pending' | 'paid' | 'expired'，createdAt 是 ISO 字符串，
+ * 且没有 usageCount。接后端真实数据时需要对齐这三处。
+ */
+export type PaymentLinkStatus = 'active' | 'inactive';
+
+export interface PaymentLink {
+  id: string;
+  product: string;
+  symbol: string;
+  amount: number;
+  duration: number;
+  url: string;
+  status: PaymentLinkStatus;
+  usageCount: number;
+  createdAt: number;
+}

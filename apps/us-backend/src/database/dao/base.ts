@@ -1,5 +1,8 @@
 // DAO层基础接口定义
-import type { Database } from 'sqlite3';
+// 修复：运行时注入的是 better-sqlite3 实例（同步 API），
+// 原先却按 node-sqlite3 声明类型（`import type { Database } from 'sqlite3'`），
+// 导致这些文件被写成了回调风格 —— 回调永远不会被调用。
+import type { Database } from 'better-sqlite3';
 
 export interface BaseDAO<T> {
   findById(id: string): T | undefined;
