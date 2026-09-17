@@ -207,6 +207,10 @@ export class AlertService {
     orderId?: string;
     amount?: string;
     payer?: string;
+    // 调用方（contractListenerService）一直在传这三个字段，但类型里没有声明
+    token?: string;
+    treasury?: string;
+    chainId?: string | number;
   }): Promise<void> {
     const alert: AlertMessage = {
       title: `合约事件: ${eventData.eventName}`,

@@ -6,6 +6,7 @@ import { BASE_USDC_ADDRESS, CHECKOUT_CONTRACT_ADDRESS } from '../constants';
 import { ConnectOrPayButton } from '../components/ConnectOrPayButton';
 import { WalletConnectionResult } from '../lib/wallet';
 import { payPolicyWithWallet } from '../lib/payPolicy';
+import api from '../services/api';
 
 export const Payment: React.FC = () => {
   const navigate = useNavigate();
@@ -47,20 +48,19 @@ export const Payment: React.FC = () => {
     setIsProcessing(true);
     try {
       const result = await payPolicyWithWallet({ amountUsdc: Number(amount) }, { address: wallet.address, ethereum: wallet.ethereum });
-      try {
-        await fetch('/api/v1/orders/minimal-create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: result.orderId, wallet: wallet.address, premiumUSDC: Number(amount) })
-        });
-      } catch {}
-      try {
-        await fetch(`/api/v1/orders/${result.orderId}/submit-tx`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ txHash: result.txHash })
-        });
-      } catch {}
+
+      // 修复三处：
+      // ① 原先用裸 fetch 不带任何登录凭证，而后端现在要求钱包登录态
+      // ② minimal-create 原先传 premiumUSDC（客户端申报金额），后端已改为
+      //    必须带 txHash 并按链上 PremiumPaid 事件取实际金额
+      // ③ 两个调用都包在 try{}catch{} 里静默吞掉，后端全部拒绝时用户依然看到
+      //    「支付完成」。现在失败会如实告知。
+      await api.post('/api/v1/orders/minimal-create', {
+        orderId: result.orderId,
+        wallet: wallet.address,
+        txHash: result.txHash
+      }, { requireAuth: true });
+
       push({
         title: '支付完成，等待链上确认',
         desc: `orderId=${result.orderId.slice(0, 10)}…`

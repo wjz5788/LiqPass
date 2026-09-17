@@ -1,4 +1,4 @@
-import type { StatusState } from './status';
+import type { StatusState } from './status.js';
 
 /**
  * Represents an authenticated LiqPass account holder.

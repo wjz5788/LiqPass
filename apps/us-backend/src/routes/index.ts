@@ -29,7 +29,7 @@ export default function registerRoutes(app: express.Application, deps: RouteDepe
   app.use('/api/v1/auth', authRoutes(authService, requireAuth));
   app.use('/api/v1', claimsRoutes(claimsService, authService));
   app.use('/api/v1/claims', claimsVerifySimpleRoutes(authService));
-  app.use('/api/v1', ordersRoutes(orderService));
+  app.use('/api/v1', ordersRoutes(orderService, requireAuth));
   app.use('/api/v1/admin', adminClaimsRoutes);
   app.use('/api/v1/api-keys', apiKeysRoutes);
   app.use('/api/v1/pricing', pricingRoutes);

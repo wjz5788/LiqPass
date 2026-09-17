@@ -1,5 +1,8 @@
 // 订单DAO实现
-import type { Database } from 'sqlite3';
+// 修复：运行时注入的是 better-sqlite3 实例（同步 API），
+// 原先却按 node-sqlite3 声明类型（`import type { Database } from 'sqlite3'`），
+// 导致这些文件被写成了回调风格 —— 回调永远不会被调用。
+import type { Database } from 'better-sqlite3';
 import { BaseDAOImpl, PageRequest, PageResponse } from './base.js';
 
 export interface Order {
@@ -54,6 +57,8 @@ export class OrderDAO extends BaseDAOImpl<Order> {
         duration_hours INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending',
         payment_proof_id TEXT,
+        payment_tx_hash TEXT,
+        payment_block_number INTEGER,
         evidence_id TEXT,
         claim_id TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

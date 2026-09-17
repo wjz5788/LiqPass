@@ -109,6 +109,24 @@ export default class OrderService {
   }
 
   createOrder(input: CreateOrderInput): { order: OrderRecord; created: boolean } {
+    // ── 修复：保费必须由服务端计算 ──────────────────────────────────────
+    // 原实现直接采用客户端 POST 上来的 premiumUSDC6d。配合前端
+    // src/debug/fetchForcePremium.ts（?force01 即可把保费改写成 0.01 USDC），
+    // 攻击者可以用 0.01 USDC 买到任意保额的保单。
+    // 这里按 (skuId, principal, leverage) 重算，并与客户端申报值比对。
+    const sku = this.getSku(input.skuId);
+    if (!sku || !sku.enabled) {
+      throw new OrderError('SKU_DISABLED', 'The requested SKU is not available.');
+    }
+    const authoritative = this.computeQuote(sku, input.principal, input.leverage);
+    const declared = Number(input.premiumUSDC6d);
+    if (Number.isFinite(declared) && declared !== authoritative.premiumUSDC6d) {
+      throw new OrderError(
+        'PREMIUM_MISMATCH',
+        `保费与服务端计算结果不符（申报 ${declared}，应为 ${authoritative.premiumUSDC6d}），请重新获取报价。`
+      );
+    }
+
     const result = this.dbService.createOrder({
       skuId: input.skuId,
       principal: input.principal,
@@ -116,7 +134,7 @@ export default class OrderService {
       wallet: input.wallet,
       paymentMethod: input.paymentMethod,
       idempotencyKey: input.idempotencyKey,
-      premiumUSDC6d: input.premiumUSDC6d,
+      premiumUSDC6d: authoritative.premiumUSDC6d,
       paymentProofId: input.paymentProofId,
       orderRef: input.orderRef,
       exchange: String(input.exchange || ''),
@@ -182,6 +200,18 @@ export default class OrderService {
 
   getPaymentConfig(): PaymentConfig {
     return { ...this.payment };
+  }
+
+  /**
+   * 同步列出订单。
+   *
+   * 修复：transparencyService 一直在调用 orderService.listOrders()，
+   * 但 OrderService 上从来没有这个方法（TS2339）—— 之前被
+   * `import type { Database } from 'sqlite3'` 之类的 any 掩盖着。
+   * 这里补上一个同步版本，内部复用 dbService 的查询。
+   */
+  listOrders(): OrderRecord[] {
+    return this.dbService.listOrdersSync() as unknown as OrderRecord[];
   }
 
   async listOrdersPersisted(): Promise<OrderRecord[]> {

@@ -7,14 +7,13 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
-import { Dictionary } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 import { buildLink } from '../utils';
 
-interface CreateLinkProps {
-  t: Dictionary;
-}
+// t 改由 LanguageContext 提供，这个从未被使用过的 props 接口一并移除
 
 export const CreateLink: React.FC = () => {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const { push } = useToast();
   const { address } = useWallet();

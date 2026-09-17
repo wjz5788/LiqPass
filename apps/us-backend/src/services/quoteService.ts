@@ -1,5 +1,5 @@
-import { ProductModel, Product, CreateQuoteRequest, QuoteResponse } from '../models/product';
-import { QuoteModel, CreateQuoteData } from '../models/quote';
+import { ProductModel, Product, CreateQuoteRequest, QuoteResponse } from '../models/product.js';
+import { QuoteModel, CreateQuoteData } from '../models/quote.js';
 
 export class QuoteService {
   /**

@@ -4,8 +4,9 @@ import { isAddress } from 'ethers';
 
 const router = express.Router();
 
-// 私钥用于签名（生产环境应该从环境变量获取）
-const ISSUER_PRIVATE_KEY = process.env.ISSUER_PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+// 签名私钥：必须来自环境变量（原先硬编码的是公开的 Hardhat 测试私钥）
+import { lazyEnv } from '../utils/requireEnv.js';
+const getIssuerPrivateKey = lazyEnv('ISSUER_PRIVATE_KEY');
 
 // 合约地址（应该与前端一致）
 const POLICY_ADDR = process.env.POLICY_ADDR || '0x0000000000000000000000000000000000000000';
@@ -103,7 +104,7 @@ router.post('/issue', async (req, res) => {
     };
 
     // 创建签名者
-    const signer = new ethers.Wallet(ISSUER_PRIVATE_KEY);
+    const signer = new ethers.Wallet(getIssuerPrivateKey());
     
     // 生成EIP-712签名
     const voucherSig = await signer.signTypedData(domain, types, voucher);

@@ -15,14 +15,9 @@ const POLICY_ADDR: string =
   (import.meta as any).env?.VITE_POLICY_ADDR ||
   '0x0000000000000000000000000000000000000000';
 const USDC_ADDR = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'; // Base USDC(6d)
-const ERC20_ABI = [
-  'function allowance(address owner,address spender) view returns (uint256)',
-  'function approve(address spender,uint256 amount) returns (bool)'
-];
-const POLICY_ABI = [
-  'function buyPolicy((address wallet,uint32 skuId,bytes32 exchangeId,bytes32 accountHash,uint256 deadline,uint256 nonce,bytes32 voucherId),bytes,(address wallet,bytes32 inputHash,uint96 price,uint96 maxPayout,uint32 durationHours,bytes32 quoteId,uint256 deadline,uint256 chainId,address contractAddr),bytes,uint32 skuId,uint96 notional,bytes32 verifyHash) returns (uint256)',
-  'event PolicyPurchased(uint256 indexed policyId,address indexed buyer,uint32 skuId,uint96 price,bytes32 quoteId,bytes32 inputHash,bytes32 verifyHash)'
-];
+// 说明：此处原有一份 POLICY_ABI（7 参数的凭证版 buyPolicy）与一份 ERC20_ABI，
+// 两者在本文件中从未被引用 —— 实际支付走的是 lib/payPolicy.ts 里的
+// buyPolicy(bytes32,uint256,bytes32)。已删除，避免误以为存在两套支付路径。
 
 // 公共函数
 const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
@@ -85,8 +80,18 @@ export const Products: React.FC = () => {
       if ((chainId || '').toLowerCase() !== '0x2105') {
         await switchToBase(false);
       }
-      const amountUSDC = '0.01';
-      const res = await payAndSubmit(amountUSDC);
+      // 修复：这里原先写死 amountUSDC = '0.01'，无论页面上算出多少保费，
+      // 实际只收 0.01 USDC，而本地订单记录里却写入完整的 premiumPaid / payoutMax。
+      // 现在按页面展示的保费收取。
+      const amountUSDC = (Math.round(Number(feeAmt || 0) * 1e6) / 1e6).toFixed(6);
+      if (!(Number(amountUSDC) > 0)) {
+        push({ title: '保费计算异常 / Invalid premium' });
+        return;
+      }
+      const res = await payAndSubmit(amountUSDC, {
+        principal: clamp(principal, MIN_P, MAX_P),
+        leverage: ensureInt(lev)
+      });
       push({ title: '已发起支付 / Payment started', desc: `tx=${(res?.txHash || '').slice(0, 10)}…` });
       try {
         const now = Date.now();

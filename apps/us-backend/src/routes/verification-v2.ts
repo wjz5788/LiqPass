@@ -2,6 +2,7 @@
 import express from 'express';
 import dbManager from '../database/db.js';
 import VerificationService from '../services/verificationService.js';
+import { DatabaseManager } from '../database/db.js';
 import { VerifyRequest, VerifyResponse } from '../types/index.js';
 
 const router = express.Router();
@@ -239,7 +240,7 @@ router.post('/batch', async (req, res) => {
   }
 });
 
-export default (dbManager: typeof dbManager) => {
+export default (dbManager: DatabaseManager) => {
   // 将数据库管理器注入到请求对象中
   router.use((req, res, next) => {
     req.app.set('dbManager', dbManager);

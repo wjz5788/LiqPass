@@ -9,6 +9,23 @@ export type Exchange = 'OKX' | 'Binance' | 'Hyperliquid';
 export type Environment = 'live' | 'testnet';
 export type VerificationStatus = 'draft' | 'unverified' | 'verifying' | 'verified' | 'failed' | 'disabled' | 'deleted';
 
+/**
+ * 修复：verificationService.ts 一直在 import { VerificationResult }，
+ * 但本文件从未定义过它（TS2305）。按其实际用法补上。
+ */
+export interface VerificationResult {
+  id: string;
+  walletAddress: string;
+  chainId?: number | string;
+  signature?: string;
+  message?: string;
+  status: VerificationStatus;
+  result?: boolean;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type Caps = {
   orders: boolean;
   fills: boolean;

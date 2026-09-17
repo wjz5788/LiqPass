@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePremiumUSDCFields } from './premiumUSDCTransform.ts';
+import { normalizePremiumUSDCFields, type JsonValue } from './premiumUSDCTransform';
 
 describe('normalizePremiumUSDCFields', () => {
   it('should convert premiumUSDC fields recursively', () => {
-    const payload = {
+    // 显式标注为 JsonValue：否则 TS 会给数组元素推断出 `premiumUSDC?: undefined`
+    // 这类可选-undefined 联合，与 JsonValue 不兼容，导致 `tsc && vite build` 失败。
+    const payload: JsonValue = {
       premiumUSDC: 0.5,
       nested: {
         premiumUSDC: '1.25',

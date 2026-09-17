@@ -20,7 +20,12 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 
 -- 3) 订单验证记录表
-CREATE TABLE IF NOT EXISTS orders (
+-- 【重命名说明】本表原名 orders，但存的是「订单验证记录」
+-- （exchange / ord_id / inst_id / liquidated），与应用层订单表同名不同义，
+-- 会和 010_persist_memory_tables.sql 里真正的 orders 表冲突。
+-- 仓库中没有任何代码读写这张表（验证数据实际落在 verify_results / verify_requests），
+-- 故改名以消除冲突。
+CREATE TABLE IF NOT EXISTS order_verifications (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   exchange TEXT NOT NULL,

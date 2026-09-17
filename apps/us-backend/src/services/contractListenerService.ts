@@ -206,20 +206,6 @@ export class ContractListenerService {
   }
 
   /**
-   * 停止事件监听
-   */
-  async stopListening(): Promise<void> {
-    if (!this.isListening) {
-      console.log("⚠️  事件监听器未在运行");
-      return;
-    }
-
-    this.contract.removeAllListeners("PremiumPaid");
-    this.isListening = false;
-    console.log("🛑 PremiumPaid事件监听器已停止");
-  }
-
-  /**
    * 验证事件数据
    */
   private async validateEvent(
@@ -476,7 +462,7 @@ export class ContractListenerService {
       console.log("✅ 重组处理完成");
       
       // 发送重组通知
-      await this.alertService.sendSystemAlert({
+      await this.alertService.sendAlert({
         level: "warning",
         title: "区块链重组处理完成",
         message: `成功处理了深度为 ${depth} 区块的区块链重组`,

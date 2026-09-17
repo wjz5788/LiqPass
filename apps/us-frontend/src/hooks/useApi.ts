@@ -3,10 +3,11 @@
  * 提供简洁的API调用方式，自动处理加载状态和错误
  */
 
-import { useState, useCallback, useRef } from 'react';
-import { useLoading } from '../contexts/LoadingContext.tsx';
-import { api, ApiError, safeApiCall } from '../services/api.ts';
-import { useToast } from '../contexts/ToastContext.tsx';
+// 修复：本文件用了 useEffect 但从未导入 React（TS2686）
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useLoading } from '../contexts/LoadingContext';
+import { api, ApiError, safeApiCall } from '../services/api';
+import { useToast } from '../contexts/ToastContext';
 
 // API Hook配置接口
 interface UseApiOptions {
@@ -268,7 +269,7 @@ export function useFetch<T = any>(
   }, [enabled, cacheKey, staleTime, execute, data]);
 
   // 设置轮询
-  React.useEffect(() => {
+  useEffect(() => {
     if (!enabled || !refetchInterval) return;
 
     intervalRef.current = setInterval(() => {
@@ -283,7 +284,7 @@ export function useFetch<T = any>(
   }, [enabled, refetchInterval, fetchWithCache]);
 
   // 窗口聚焦时重新获取
-  React.useEffect(() => {
+  useEffect(() => {
     if (!enabled || !refetchOnWindowFocus) return;
 
     const handleFocus = () => {
@@ -295,7 +296,7 @@ export function useFetch<T = any>(
   }, [enabled, refetchOnWindowFocus, fetchWithCache]);
 
   // 初始获取
-  React.useEffect(() => {
+  useEffect(() => {
     if (enabled) {
       fetchWithCache();
     }

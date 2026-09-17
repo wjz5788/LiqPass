@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS orders (
   duration_hours INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending', -- pending/paid/active/expired/claimed
   payment_proof_id TEXT,
+  -- 支付上链信息：原先只写进文件账本，SQL 里无处存放，导致对账只能靠文件
+  payment_tx_hash TEXT,
+  payment_block_number INTEGER,
   evidence_id TEXT,
   claim_id TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

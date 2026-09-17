@@ -1,27 +1,19 @@
 import express from 'express';
 import dbManager, { db as sqlite, withTransaction } from '../database/db.js';
 
-// SQLite3 回调风格转 Promise
-const runAsync = (sql: string, params: any[] = []) => new Promise<{ changes: number; lastID?: number }>((resolve, reject) => {
-  sqlite.run(sql, params, function (err) {
-    if (err) return reject(err);
-    resolve({ changes: this.changes, lastID: this.lastID });
-  });
-});
+// 修复：sqlite 来自 better-sqlite3（同步 API：run(sql, ...params) 直接返回
+// { changes, lastInsertRowid }）。原代码按 node-sqlite3 的回调风格写，
+// 回调永远不会被调用，这两个 Promise 会永远挂起。
+const runAsync = async (sql: string, params: any[] = []): Promise<{ changes: number; lastID?: number }> => {
+  const info = sqlite.run(sql, ...params);
+  return { changes: info.changes, lastID: Number(info.lastInsertRowid) };
+};
 
-const allAsync = <T = any>(sql: string, params: any[] = []) => new Promise<T[]>((resolve, reject) => {
-  sqlite.all(sql, params, (err, rows) => {
-    if (err) return reject(err);
-    resolve(rows as T[]);
-  });
-});
+const allAsync = async <T = any>(sql: string, params: any[] = []): Promise<T[]> =>
+  sqlite.all(sql, ...params) as T[];
 
-const getAsync = <T = any>(sql: string, params: any[] = []) => new Promise<T | undefined>((resolve, reject) => {
-  sqlite.get(sql, params, (err, row) => {
-    if (err) return reject(err);
-    resolve(row as T | undefined);
-  });
-});
+const getAsync = async <T = any>(sql: string, params: any[] = []): Promise<T | undefined> =>
+  sqlite.get(sql, ...params) as T | undefined;
 
 export default function minSchemaRoutes() {
   const router = express.Router();

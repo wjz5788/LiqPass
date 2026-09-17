@@ -1,4 +1,4 @@
-import { toUSDC6d } from './usdcUtils.ts';
+import { toUSDC6d } from './usdcUtils';
 
 export type JsonValue =
   | string

@@ -1,16 +1,9 @@
 // 服务器启动文件
-import dotenv from 'dotenv';
-import path from 'path';
+// ⚠️ loadEnv 必须排在所有其它 import 之前：ESM 会先把 import 全部求值完，
+//    之前把 dotenv.config() 写在模块体里，导致 app.ts 在环境变量加载前就已初始化。
+import './loadEnv.js';
 import app from './app.js';
 import { EnvValidator } from './utils/envValidator.js';
-
-// 加载环境变量
-const env = process.env.NODE_ENV || 'development';
-if (env === 'production') {
-  dotenv.config({ path: path.resolve('.env.production') });
-} else {
-  dotenv.config();
-}
 
 // 启动前校验环境变量
 const skipValidation = process.env.DISABLE_PAYMENT_ENV_VALIDATION === 'true';

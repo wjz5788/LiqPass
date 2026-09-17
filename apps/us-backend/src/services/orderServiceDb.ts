@@ -360,11 +360,18 @@ export class OrderServiceDb {
   }
 
   async listOrders(): Promise<OrderRecord[]> {
+    return this.listOrdersSync();
+  }
+
+  /**
+   * 同步版本。better-sqlite3 本身就是同步的，上面的 async 只是形式；
+   * transparencyService 那类同步调用方需要这个入口。
+   */
+  listOrdersSync(): OrderRecord[] {
     const stmt = this.db.prepare(`
       SELECT * FROM orders ORDER BY created_at DESC
     `);
     const rows = stmt.all() as any[];
-    
     return rows.map(row => this.mapOrderRecord(row));
   }
 

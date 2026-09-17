@@ -9,6 +9,7 @@
     "noEmit": false
   },
   "include": [
+    "src/loadEnv.ts",
     "src/server.ts",
     "src/app.ts",
     "src/routes/index.ts",

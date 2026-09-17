@@ -24,8 +24,15 @@ CREATE INDEX IF NOT EXISTS idx_contract_events_buyer_address ON contract_events(
 CREATE INDEX IF NOT EXISTS idx_contract_events_block_number ON contract_events(block_number);
 CREATE INDEX IF NOT EXISTS idx_contract_events_status ON contract_events(status);
 
--- 创建订单表（如果不存在）
-CREATE TABLE IF NOT EXISTS orders (
+-- 【重命名说明】本表原名 orders。
+-- 它属于链上事件监听子系统（id 自增、order_id 为链上订单号、buyer_address/amount），
+-- 与应用层的订单表（010_persist_memory_tables.sql 里 id 为 TEXT 主键、
+-- 含 wallet_address / premium_usdc 等列）是两回事。
+-- 由于本文件在 migrationManager 的执行顺序中排在最前，它抢先建出了名为 orders 的表，
+-- 后面 002 和 010 里的 CREATE TABLE IF NOT EXISTS orders 全部静默跳过，
+-- 导致 orderServiceDb / orderDAO / minimal-create 对 orders 的每一次读写
+-- 都会因为「no such column」而失败。改名以消除冲突。
+CREATE TABLE IF NOT EXISTS contract_orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id TEXT UNIQUE NOT NULL,
     buyer_address TEXT NOT NULL,
@@ -39,6 +46,6 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 -- 创建订单索引
-CREATE INDEX IF NOT EXISTS idx_orders_order_id ON orders(order_id);
-CREATE INDEX IF NOT EXISTS idx_orders_buyer_address ON orders(buyer_address);
-CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_contract_orders_order_id ON contract_orders(order_id);
+CREATE INDEX IF NOT EXISTS idx_contract_orders_buyer ON contract_orders(buyer_address);
+CREATE INDEX IF NOT EXISTS idx_contract_orders_status ON contract_orders(status);

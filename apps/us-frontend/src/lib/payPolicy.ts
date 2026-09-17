@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import api from '../services/api.ts';
+import api from '../services/api';
 import {
   BASE_USDC_ADDRESS,
   CHECKOUT_CONTRACT_ADDRESS,
@@ -56,22 +56,25 @@ export async function payPolicy(amountUSDC: string) {
   }
 
   const orderId = ethers.id(`${address}:${Date.now()}:${Math.random()}`);
-  let quoteHash: string | undefined;
+
+  // 修复：原实现在后端 /quote-hash 调用失败时，会**本地伪造**一个随机 quoteHash。
+  // 该哈希从未在合约里注册过，buyPolicy 必定 revert（"invalid or expired quote hash"），
+  // 用户却先付掉了一笔 approve 的 gas，且拿不到任何有效报错。
+  // 报价必须来自后端，拿不到就明确失败。
+  let quoteHash: string;
   if (typeof STATIC_QUOTE_HASH === 'string' && /^0x[a-fA-F0-9]{64}$/.test(STATIC_QUOTE_HASH)) {
     quoteHash = STATIC_QUOTE_HASH;
   } else {
-    try {
-      const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>('/api/v1/pricing/quote-hash', {
-        wallet: address,
-        amountUSDC
-      }, { requireAuth: false });
-      quoteHash = (quoteResp as any)?.data?.quoteHash;
-    } catch {
-      quoteHash = ethers.id(`${address}:${amountUSDC}:${Date.now()}`);
+    const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>(
+      '/api/v1/pricing/quote-hash',
+      { wallet: address, orderId, amountUSDC },
+      { requireAuth: true }
+    );
+    const got = (quoteResp as any)?.data?.quoteHash;
+    if (!got || !/^0x[a-fA-F0-9]{64}$/.test(got)) {
+      throw new Error('未能从服务端获取有效报价（quoteHash），请稍后重试');
     }
-    if (!quoteHash || !/^0x[a-fA-F0-9]{64}$/.test(quoteHash)) {
-      quoteHash = ethers.id(`${address}:${amountUSDC}:${Date.now()}`);
-    }
+    quoteHash = got;
   }
   const usdc = new ethers.Contract(BASE_USDC_ADDRESS, ERC20_ABI, signer);
   const allowance: bigint = await usdc.allowance(address, CHECKOUT_CONTRACT_ADDRESS);
@@ -88,15 +91,23 @@ export async function payPolicy(amountUSDC: string) {
   return { orderId, txHash: receipt?.hash ?? buyTx.hash };
 }
 
-export async function payAndSubmit(amountUSDC: string) {
+export async function payAndSubmit(
+  amountUSDC: string,
+  meta?: { principal?: number; leverage?: number }
+) {
   const { orderId, txHash } = await payPolicy(amountUSDC);
   try {
-    const { signer, address } = await connectAndEnsureBase();
-    await fetch('/api/v1/orders/minimal-create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, wallet: address, premiumUSDC: Number(amountUSDC) })
-    });
+    const { address } = await connectAndEnsureBase();
+    // 后端现在要求：① 钱包登录态（只能为自己建单）②带上 txHash 并由服务端
+    // 核验链上 PremiumPaid 事件，保费以链上实际金额为准。
+    // 原先用裸 fetch 不带任何凭证，改走 api 客户端以附上 Authorization。
+    await api.post('/api/v1/orders/minimal-create', {
+      orderId,
+      wallet: address,
+      txHash,
+      principal: meta?.principal,
+      leverage: meta?.leverage
+    }, { requireAuth: true });
   } catch {}
   try {
     await fetch(`/api/v1/orders/${orderId}/submit-tx`, {
@@ -118,23 +129,23 @@ export async function payPolicyWithWallet(
   const amount = ethers.parseUnits(String(params.amountUsdc), USDC_DECIMALS);
   if (amount <= 0n) throw new Error('请输入有效的 USDC 金额');
   const orderId = ethers.id(`${wallet.address}:${Date.now()}:${Math.random()}`);
-  let quoteHash: string | undefined;
+  // 与 payPolicy() 同样的修复：拿不到后端报价时，原实现会本地伪造一个
+  // 从未在合约注册过的 quoteHash，buyPolicy 必定 revert，用户却已先付掉
+  // approve 的 gas。报价必须来自后端。
+  let quoteHash: string;
   if (typeof STATIC_QUOTE_HASH === 'string' && /^0x[a-fA-F0-9]{64}$/.test(STATIC_QUOTE_HASH)) {
     quoteHash = STATIC_QUOTE_HASH;
   } else {
-    try {
-      const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>(
-        '/api/v1/pricing/quote-hash',
-        { wallet: wallet.address, amountUSDC: String(params.amountUsdc) },
-        { requireAuth: false }
-      );
-      quoteHash = (quoteResp as any)?.data?.quoteHash;
-    } catch {
-      quoteHash = ethers.id(`${wallet.address}:${String(params.amountUsdc)}:${Date.now()}`);
+    const quoteResp = await api.post<{ ok: boolean; data?: { quoteHash: string } }>(
+      '/api/v1/pricing/quote-hash',
+      { wallet: wallet.address, orderId, amountUSDC: String(params.amountUsdc) },
+      { requireAuth: true }
+    );
+    const got = (quoteResp as any)?.data?.quoteHash;
+    if (!got || !/^0x[a-fA-F0-9]{64}$/.test(got)) {
+      throw new Error('未能从服务端获取有效报价（quoteHash），请稍后重试');
     }
-    if (!quoteHash || !/^0x[a-fA-F0-9]{64}$/.test(quoteHash)) {
-      quoteHash = ethers.id(`${wallet.address}:${String(params.amountUsdc)}:${Date.now()}`);
-    }
+    quoteHash = got;
   }
   const usdc = new ethers.Contract(BASE_USDC_ADDRESS, ERC20_ABI, signer);
   const allowance: bigint = await usdc.allowance(wallet.address, CHECKOUT_CONTRACT_ADDRESS);

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm --filter us-backend test --run
+        env:
+          NODE_ENV: test
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 阻止提交真实密钥
+        run: |
+          set -e
+          # 任何被版本控制的 .env（除 .example / .sample 模板）都不该存在
+          bad=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '\.(example|sample)$' || true)
+          if [ -n "$bad" ]; then
+            echo "❌ 仓库中存在不应提交的环境变量文件:"; echo "$bad"; exit 1
+          fi
+          # 硬编码私钥（0x + 64 hex，排除全零占位符）
+          # 只扫描可执行源码与配置；Merkle 根、交易哈希等数据同样是 32 字节，
+          # 对整个仓库匹配会把 evidence/*.root、CSV 报告误报成私钥。
+          hits=$(git grep -nIE '0x[0-9a-fA-F]{64}' -- \
+                   '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.sol' '*.py' '*.sh' '*.yml' '*.yaml' \
+                 | grep -vE '0x0{64}' || true)
+          if [ -n "$hits" ]; then
+            echo "❌ 疑似硬编码私钥:"; echo "$hits"; exit 1
+          fi
+          echo "✅ 未发现明文密钥"

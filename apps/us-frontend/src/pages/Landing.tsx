@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { buildLink } from '../utils';
+import { useLanguage } from '../contexts/LanguageContext';
 
 // 支付链接预览组件
 function PaymentLinkPreview({ url, onCopy }: { url: string; onCopy: () => void }) {
@@ -36,6 +37,7 @@ function PaymentLinkPreview({ url, onCopy }: { url: string; onCopy: () => void }
 }
 
 export const Landing: React.FC = () => {
+  const { t } = useLanguage();
   const { message, setMessage, address, onBase } = useWallet();
   const { push } = useToast();
   const [linkUrl, setLinkUrl] = useState("");
