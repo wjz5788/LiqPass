@@ -11,12 +11,17 @@ build/
 *.tgz
 *.tar.gz
 
-# Environment variables
+# Environment variables —— 只允许提交 *.example / *.sample 模板
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+!.env.sample
+*/.env
+*/.env.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.sample
 
 # Logs
 *.log
@@ -71,17 +76,23 @@ ENV/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.sqlite3
+
+# Python 虚拟环境（仓库里误提交了 apps/jp-verify/.venv311，约 26MB / 2000+ 文件）
+.venv*/
+**/.venv*/
 
 # Cache
 .cache/
 .parcel-cache/
 
-# Test files
-*.test.js
-*.test.ts
-!/apps/us-backend/test/*.test.ts
+# 注意：这里原本 ignore 掉了全部 *.test.js / *.test.ts，
+# 等于把整个测试套件排除在版本库之外。测试代码必须入库。
 
 # Documentation
 _site/
