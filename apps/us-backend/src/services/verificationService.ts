@@ -114,6 +114,32 @@ export class VerificationService {
    * @param offset 偏移量
    * @returns 验证历史记录数组
    */
+  /**
+   * 订单验证（V2 路由使用）。
+   *
+   * 修复：routes/verification-v2.ts 一直在调用 verificationService.verifyApiKey()，
+   * 但这个方法从来就不存在（TS2339）—— 之前被构造函数的自引用类型
+   * `constructor(dbManager: typeof dbManager)` 退化成 any 给掩盖了。
+   *
+   * 这条 V2 路由本身是废弃的重复实现：它没有在 routes/index.ts 注册，
+   * 真正生效的订单验证是 /api/v1/verify（routes/okx-verify.ts，转发到 jp-verify 服务）。
+   * 本类里的 processVerification 也只是个 `Math.random() > 0.3` 的占位实现。
+   *
+   * 因此这里**不**把它接到那个占位实现上（那等于上线一个假的验证器），
+   * 而是明确返回未实现。要么把 V2 路由接到 okx-verify 的真实链路上，要么删掉整条路由。
+   */
+  async verifyApiKey(_request: unknown): Promise<{
+    status: 'success' | 'error';
+    result?: unknown;
+    error?: string;
+  }> {
+    return {
+      status: 'error',
+      error:
+        'NOT_IMPLEMENTED: V2 验证路由尚未接入真实验证链路，请使用 /api/v1/verify'
+    };
+  }
+
   async getVerificationHistory(walletAddress: string, limit: number = 10, offset: number = 0): Promise<any[]> {
     // 获取所有验证记录
     const allVerifications = Array.from(verifications.values());

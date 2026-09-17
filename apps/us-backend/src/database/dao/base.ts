@@ -38,25 +38,15 @@ export abstract class BaseDAOImpl<T extends { id: string }> implements BaseDAO<T
   }
 
   findById(id: string): T | undefined {
+    // 修复：db 是 better-sqlite3（同步 API），原先按 node-sqlite3 回调风格写，
+    // 回调永远不会被调用 —— findById 恒返回 undefined，Promise 恒挂起。
     const stmt = this.db.prepare(`SELECT * FROM ${this.tableName} WHERE id = ?`);
-    let result: T | undefined;
-    stmt.get(id, (err, row) => {
-      if (!err) {
-        result = row as T;
-      }
-    });
-    return result;
+    return stmt.get(id) as T | undefined;
   }
 
   findAll(limit = 100, offset = 0): T[] {
     const stmt = this.db.prepare(`SELECT * FROM ${this.tableName} LIMIT ? OFFSET ?`);
-    let results: T[] = [];
-    stmt.all(limit, offset, (err: any, rows: any) => {
-      if (!err) {
-        results = rows as T[];
-      }
-    });
-    return results;
+    return stmt.all(limit, offset) as T[];
   }
 
   abstract create(entity: T): T;

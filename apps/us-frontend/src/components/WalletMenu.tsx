@@ -76,12 +76,10 @@ export function WalletMenu({ address, onLogout }: { address?: string; onLogout?:
                     className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-stone-800 hover:bg-stone-50 transition-colors"
                   >
                     <span>•</span>
-                    <span>{
-                      item.to === '/orders' ? '订单管理 / Orders' :
-                      item.to === '/claims' ? '赔付管理 / Claims' :
-                      item.to === '/settings/api' ? 'API 设置 / API Settings' :
-                      item.label
-                    }</span>
+                    {/* 修复：原先按 item.to 写了一串三元判断，而 ACCOUNT_MENU_ITEMS
+                        是 as const，to 恰好只有这三个字面量，最后的 else 分支被收窄成
+                        never，导致 item.label 报错。这串判断本身也只是把 label 重写一遍。 */}
+                    <span>{item.label}</span>
                   </Link>
                 ))}
                 <button

@@ -20,13 +20,11 @@ import { Help } from './pages/Help';
 import ClaimsManage from './pages/ClaimsManage';
 import { ClaimsPage } from './pages/ClaimsPage';
 import OrderDetailPage from './pages/OrderDetailPage';
-import { zh } from './i18n/zh';
-import { en } from './i18n/en';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import ClaimDetailPage from './pages/ClaimDetailPage';
 
-function App() {
-  const [lang, setLang] = useState<'zh' | 'en'>('zh');
-  const t = lang === 'zh' ? zh : en;
+function AppShell() {
+  const { lang, setLang, t } = useLanguage();
 
   return (
     <Router basename={import.meta.env.BASE_URL}>
@@ -68,6 +66,14 @@ function App() {
         </ToastProvider>
       </WalletProvider>
     </Router>
+  );
+}
+
+function App() {
+  return (
+    <LanguageProvider>
+      <AppShell />
+    </LanguageProvider>
   );
 }
 

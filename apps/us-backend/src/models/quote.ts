@@ -28,81 +28,41 @@ export class QuoteModel {
   static async create(data: CreateQuoteData): Promise<Quote> {
     const id = `quote_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    return new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO quotes (
-          id, user_id, product_id, principal, leverage, 
-          premium, payout, params_json, expires_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          id,
-          data.user_id,
-          data.product_id,
-          data.principal,
-          data.leverage,
-          data.premium,
-          data.payout,
-          JSON.stringify(data.params),
-          data.expires_at.toISOString(),
-          new Date().toISOString()
-        ],
-        function(err) {
-          if (err) {
-            reject(err);
-            return;
-          }
-          
-          // 获取创建的报价
-          db.get(
-            'SELECT * FROM quotes WHERE id = ?',
-            [id],
-            (err, row) => {
-              if (err) reject(err);
-              else resolve(row as Quote);
-            }
-          );
-        }
-      );
-    });
+    // 修复：db 是 better-sqlite3（同步 API），原先整个文件按 node-sqlite3
+    // 回调风格编写，回调永远不会被调用 —— 这些 Promise 一个都不会 resolve。
+    db.run(
+      `INSERT INTO quotes (
+        id, user_id, product_id, principal, leverage,
+        premium, payout, params_json, expires_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      data.user_id,
+      data.product_id,
+      data.principal,
+      data.leverage,
+      data.premium,
+      data.payout,
+      JSON.stringify(data.params),
+      data.expires_at.toISOString(),
+      new Date().toISOString()
+    );
+    return db.get('SELECT * FROM quotes WHERE id = ?', id) as Quote;
   }
 
   static async findById(id: string): Promise<Quote | null> {
-    return new Promise((resolve, reject) => {
-      db.get(
-        'SELECT * FROM quotes WHERE id = ?',
-        [id],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row as Quote || null);
-        }
-      );
-    });
+    return (db.get('SELECT * FROM quotes WHERE id = ?', id) as Quote) || null;
   }
 
   static async findByUserId(userId: string): Promise<Quote[]> {
-    return new Promise((resolve, reject) => {
-      db.all(
-        'SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC',
-        [userId],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows as Quote[]);
-        }
-      );
-    });
+    return db.all('SELECT * FROM quotes WHERE user_id = ? ORDER BY created_at DESC', userId) as Quote[];
   }
 
   static async findValidById(id: string): Promise<Quote | null> {
-    return new Promise((resolve, reject) => {
-      db.get(
-        'SELECT * FROM quotes WHERE id = ? AND expires_at > ?',
-        [id, new Date().toISOString()],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row as Quote || null);
-        }
-      );
-    });
+    return (db.get(
+      'SELECT * FROM quotes WHERE id = ? AND expires_at > ?',
+      id,
+      new Date().toISOString()
+    ) as Quote) || null;
   }
 
   static async cleanupExpiredQuotes(): Promise<number> {
@@ -118,29 +78,23 @@ export class QuoteModel {
     total_premium: number;
     avg_leverage: number;
   }> {
-    return new Promise((resolve, reject) => {
-      db.get(
-        `SELECT 
-          COUNT(*) as total_quotes,
-          SUM(principal) as total_principal,
-          SUM(premium) as total_premium,
-          AVG(leverage) as avg_leverage
-        FROM quotes 
-        WHERE product_id = ? AND expires_at > ?`,
-        [productId, new Date().toISOString()],
-        (err, row: any) => {
-          if (err) reject(err);
-          else {
-            resolve({
-              total_quotes: row.total_quotes || 0,
-              total_principal: row.total_principal || 0,
-              total_premium: row.total_premium || 0,
-              avg_leverage: row.avg_leverage || 0
-            });
-          }
-        }
-      );
-    });
+    const row = db.get(
+      `SELECT
+        COUNT(*) as total_quotes,
+        SUM(principal) as total_principal,
+        SUM(premium) as total_premium,
+        AVG(leverage) as avg_leverage
+      FROM quotes
+      WHERE product_id = ? AND expires_at > ?`,
+      productId,
+      new Date().toISOString()
+    ) as any;
+    return {
+      total_quotes: row?.total_quotes || 0,
+      total_principal: row?.total_principal || 0,
+      total_premium: row?.total_premium || 0,
+      avg_leverage: row?.avg_leverage || 0
+    };
   }
 }
 

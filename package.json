@@ -42,5 +42,11 @@
     "blockchain"
   ],
   "author": "LiqPass Team",
-  "license": "MIT"
+  "license": "MIT",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  }
 }

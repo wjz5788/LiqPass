@@ -7,11 +7,10 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { DataTable } from '../components/ui/DataTable';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
-import { Dictionary, PaymentLink } from '../types';
+import { PaymentLink } from '../types';
+import { useLanguage } from '../contexts/LanguageContext';
 
-interface LinksProps {
-  t: Dictionary;
-}
+// t 改由 LanguageContext 提供，不再作为 prop（App.tsx 从未传过这个 prop）
 
 // 模拟数据
 const mockLinks: PaymentLink[] = [
@@ -79,7 +78,7 @@ export const Links: React.FC = () => {
   const columns = [
     {
       key: 'product',
-      header: '产品 / Product',
+      label: '产品 / Product',
       render: (link: PaymentLink) => (
         <div>
           <div className="font-medium">{link.product}</div>
@@ -89,21 +88,21 @@ export const Links: React.FC = () => {
     },
     {
       key: 'amount',
-      header: '金额 / Amount',
+      label: '金额 / Amount',
       render: (link: PaymentLink) => (
         <div className="font-semibold">{link.amount} USDC</div>
       )
     },
     {
       key: 'duration',
-      header: '时长 / Duration',
+      label: '时长 / Duration',
       render: (link: PaymentLink) => (
         <div>{link.duration} 小时</div>
       )
     },
     {
       key: 'status',
-      header: '状态 / Status',
+      label: '状态 / Status',
       render: (link: PaymentLink) => (
         <Badge 
           variant={link.status === 'active' ? 'success' : 'default'}
@@ -114,14 +113,14 @@ export const Links: React.FC = () => {
     },
     {
       key: 'usage',
-      header: '使用次数 / Usage',
+      label: '使用次数 / Usage',
       render: (link: PaymentLink) => (
         <div>{link.usageCount} 次</div>
       )
     },
     {
       key: 'actions',
-      header: '操作 / Actions',
+      label: '操作 / Actions',
       render: (link: PaymentLink) => (
         <div className="flex gap-2">
           <Button 
@@ -180,11 +179,12 @@ export const Links: React.FC = () => {
       </div>
 
       <div className="mt-8">
+        {/* 修复：DataTable 的 props 是 rows/columns（没有 data/keyField），
+            列字段是 label（不是 header）—— 这个调用一直对不上组件签名 */}
         {links.length > 0 ? (
-          <DataTable 
-            data={links}
+          <DataTable
+            rows={links}
             columns={columns}
-            keyField="id"
           />
         ) : (
           <Card className="p-8 text-center">

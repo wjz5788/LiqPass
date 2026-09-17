@@ -3,9 +3,11 @@ import React from 'react';
 interface BadgeProps {
   children: React.ReactNode;
   variant?: "default" | "success" | "warning" | "error";
+  // 修复：WalletSettings.tsx 一直在传 className，但类型里没有声明
+  className?: string;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ children, variant = "default" }) => {
+export const Badge: React.FC<BadgeProps> = ({ children, variant = "default", className = "" }) => {
   const variantClasses = {
     default: "bg-amber-50 text-amber-700",
     success: "bg-green-50 text-green-700",
@@ -14,7 +16,7 @@ export const Badge: React.FC<BadgeProps> = ({ children, variant = "default" }) =
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${variantClasses[variant]}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${variantClasses[variant]} ${className}`}>
       {children}
     </span>
   );

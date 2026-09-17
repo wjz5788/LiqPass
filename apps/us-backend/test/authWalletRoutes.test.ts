@@ -214,7 +214,10 @@ describe('wallet authentication routes', () => {
   beforeEach(() => {
     resetTestDbState();
     resetAuthEmailAttemptsBlockedCount();
-    authService = new AuthService({ jwtSecret: 'test-secret', sessionDurationMs: 60_000 });
+    authService = new AuthService({
+      jwtSecret: 'test-secret-that-is-at-least-32-chars',
+      sessionDurationMs: 60_000
+    });
     app = express();
     app.use(express.json());
     app.use('/api/v1/auth', authRoutes(authService, noopRequireAuth));

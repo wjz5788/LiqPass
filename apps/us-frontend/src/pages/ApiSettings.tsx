@@ -398,6 +398,7 @@ export const ApiSettings: React.FC = () => {
       apiKey: '',
       apiSecret: '',
       passphrase: '',
+      instId: '',   // 修复：表单 state 类型里有 instId，这里漏了
       extra: {},
     });
     setDrawerOpen(true);
@@ -660,7 +661,7 @@ export const ApiSettings: React.FC = () => {
         pnl: undefined,
         currency: undefined,
         verifyReason: scriptResult.error || null,
-        evidenceId: scriptResult.data?.proof || null
+        evidenceId: scriptResult.data?.proof || undefined  // 修复：字段类型是 string | undefined，不接受 null
       };
 
       setAccounts(prev => prev.map(acc =>

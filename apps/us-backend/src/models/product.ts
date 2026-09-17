@@ -42,43 +42,18 @@ export interface QuoteResponse {
 }
 
 export class ProductModel {
+  // 修复：db 是 better-sqlite3（同步 API），原先按 node-sqlite3 回调风格写，
+  // 回调永远不会被调用，这些 Promise 永远不会 resolve。
   static async findById(id: string): Promise<Product | null> {
-    return new Promise((resolve, reject) => {
-      db.get(
-        'SELECT * FROM products WHERE id = ? AND status = ?',
-        [id, 'active'],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row as Product || null);
-        }
-      );
-    });
+    return (db.get('SELECT * FROM products WHERE id = ? AND status = ?', id, 'active') as Product) || null;
   }
 
   static async findByCode(code: string): Promise<Product | null> {
-    return new Promise((resolve, reject) => {
-      db.get(
-        'SELECT * FROM products WHERE code = ? AND status = ?',
-        [code, 'active'],
-        (err, row) => {
-          if (err) reject(err);
-          else resolve(row as Product || null);
-        }
-      );
-    });
+    return (db.get('SELECT * FROM products WHERE code = ? AND status = ?', code, 'active') as Product) || null;
   }
 
   static async findAllActive(): Promise<Product[]> {
-    return new Promise((resolve, reject) => {
-      db.all(
-        'SELECT * FROM products WHERE status = ? ORDER BY created_at',
-        ['active'],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows as Product[]);
-        }
-      );
-    });
+    return db.all('SELECT * FROM products WHERE status = ? ORDER BY created_at', 'active') as Product[];
   }
 
   static validateQuoteRequest(product: Product, principal: number, leverage: number): string | null {

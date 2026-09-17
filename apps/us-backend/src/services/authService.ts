@@ -333,11 +333,11 @@ export default class AuthService {
     try {
       recovered = this.normalizeWalletAddress(verifyMessage(challenge.message, payload.signature));
     } catch (error) {
-      throw new AuthError('INVALID_SIGNATURE', 'Wallet signature verification failed.');
+      throw new AuthError('INVALID_SIGNATURE', 'Wallet signature verification failed.', 401);
     }
 
     if (recovered !== normalizedWallet) {
-      throw new AuthError('INVALID_SIGNATURE', 'Wallet signature does not match the provided address.');
+      throw new AuthError('INVALID_SIGNATURE', 'Wallet signature does not match the provided address.', 401);
     }
 
     await this.markChallengeConsumed(payload.nonce);

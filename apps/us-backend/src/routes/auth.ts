@@ -96,27 +96,11 @@ export default function authRoutes(authService: AuthService, requireAuth: Requir
         return res.status(400).json({ error: 'MISSING_ADDRESS', message: 'address is required' });
       }
 
-      try {
-        const challenge = await authService.issueWalletChallenge(address, {
-          ipAddress: req.ip,
-          userAgent: req.get('user-agent') ?? undefined
-        });
-        return res.status(200).json(challenge);
-      } catch (e) {
-        const issuedAt = new Date();
-        const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-        const expiresAt = new Date(issuedAt.getTime() + 5 * 60 * 1000).toISOString();
-        const domain = process.env.AUTH_CHALLENGE_DOMAIN ?? 'LiqPass';
-        const message = [
-          `${domain} wants you to sign in with your Ethereum account.`,
-          '',
-          `Wallet: ${address}`,
-          `Nonce: ${nonce}`,
-          `Issued At: ${issuedAt.toISOString()}`
-        ].join('\n');
-        authService.registerMemoryChallenge(address, nonce, message, expiresAt);
-        return res.status(200).json({ nonce, message, expiresAt });
-      }
+      const challenge = await authService.issueWalletChallenge(address, {
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') ?? undefined
+      });
+      return res.status(201).json(challenge);
     } catch (error) {
       console.error('Challenge error:', error);
       return res.status(500).json({ error: 'CHALLENGE_FAILED', message: 'Unable to create wallet challenge at this time.' });

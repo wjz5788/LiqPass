@@ -202,6 +202,18 @@ export default class OrderService {
     return { ...this.payment };
   }
 
+  /**
+   * 同步列出订单。
+   *
+   * 修复：transparencyService 一直在调用 orderService.listOrders()，
+   * 但 OrderService 上从来没有这个方法（TS2339）—— 之前被
+   * `import type { Database } from 'sqlite3'` 之类的 any 掩盖着。
+   * 这里补上一个同步版本，内部复用 dbService 的查询。
+   */
+  listOrders(): OrderRecord[] {
+    return this.dbService.listOrdersSync() as unknown as OrderRecord[];
+  }
+
   async listOrdersPersisted(): Promise<OrderRecord[]> {
     const list = await this.dbService.listOrders();
     return list.map((o) => ({

@@ -9,19 +9,11 @@ const runAsync = async (sql: string, params: any[] = []): Promise<{ changes: num
   return { changes: info.changes, lastID: Number(info.lastInsertRowid) };
 };
 
-const allAsync = <T = any>(sql: string, params: any[] = []) => new Promise<T[]>((resolve, reject) => {
-  sqlite.all(sql, params, (err, rows) => {
-    if (err) return reject(err);
-    resolve(rows as T[]);
-  });
-});
+const allAsync = async <T = any>(sql: string, params: any[] = []): Promise<T[]> =>
+  sqlite.all(sql, ...params) as T[];
 
-const getAsync = <T = any>(sql: string, params: any[] = []) => new Promise<T | undefined>((resolve, reject) => {
-  sqlite.get(sql, params, (err, row) => {
-    if (err) return reject(err);
-    resolve(row as T | undefined);
-  });
-});
+const getAsync = async <T = any>(sql: string, params: any[] = []): Promise<T | undefined> =>
+  sqlite.get(sql, ...params) as T | undefined;
 
 export default function minSchemaRoutes() {
   const router = express.Router();
